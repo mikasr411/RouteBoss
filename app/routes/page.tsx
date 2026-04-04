@@ -10,8 +10,13 @@ import {
   applyTemplate,
 } from "@/lib/message-template";
 
+function formatPhone(c: { mobileNumber?: string; homeNumber?: string }) {
+  return c.mobileNumber || c.homeNumber || "—";
+}
+
 export default function RoutesPage() {
-  const { customers, updateCustomer } = useCustomerStore();
+  const { customers, updateCustomer, manualStops, clearManualStops } =
+    useCustomerStore();
   const [routeName, setRouteName] = useState(
     `Route ${format(new Date(), "MMM d, yyyy")}`
   );
@@ -46,19 +51,30 @@ export default function RoutesPage() {
       });
   }, [customers]);
 
+  const totalRouteStops =
+    selectedCustomers.length + manualStops.length;
+
   const handleExport = () => {
-    if (selectedCustomers.length === 0) {
-      alert("No customers selected for route. Please select customers from the Customers page.");
+    if (totalRouteStops === 0) {
+      alert(
+        "No stops on your route. Select customers or add an address from the Map page."
+      );
       return;
     }
 
-    // Create CSV with Name and ADDRESS columns
+    // Create CSV with Name and ADDRESS columns (customers + extra stops)
     const header = "Name,ADDRESS\n";
-    const rows = selectedCustomers.map((customer) => {
-      const name = customer.displayName.replace(/"/g, '""'); // Escape quotes
-      const address = customer.fullAddress.replace(/"/g, '""'); // Escape quotes
+    const customerRows = selectedCustomers.map((customer) => {
+      const name = customer.displayName.replace(/"/g, '""');
+      const address = customer.fullAddress.replace(/"/g, '""');
       return `"${name}","${address}"`;
     });
+    const manualRows = manualStops.map((stop) => {
+      const name = stop.label.replace(/"/g, '""');
+      const address = stop.address.replace(/"/g, '""');
+      return `"${name}","${address}"`;
+    });
+    const rows = [...customerRows, ...manualRows];
 
     const csvContent = header + rows.join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -76,7 +92,7 @@ export default function RoutesPage() {
   const handleClearSelection = () => {
     if (
       confirm(
-        "Are you sure you want to clear all route selections? This will unselect all customers."
+        "Clear all route selections? This unselects all customers and removes extra stops from the map."
       )
     ) {
       customers.forEach((customer) => {
@@ -84,6 +100,7 @@ export default function RoutesPage() {
           updateCustomer(customer.id, { isSelectedForRoute: false });
         }
       });
+      clearManualStops();
     }
   };
 
@@ -159,8 +176,14 @@ export default function RoutesPage() {
             <div>
               <div className="text-slate-400 text-sm">Stops</div>
               <div className="text-2xl font-bold text-slate-100">
-                {selectedCustomers.length}
+                {totalRouteStops}
               </div>
+              {manualStops.length > 0 && (
+                <div className="text-slate-500 text-xs mt-1">
+                  {selectedCustomers.length} customers + {manualStops.length}{" "}
+                  extra
+                </div>
+              )}
             </div>
             <div>
               <div className="text-slate-400 text-sm">Estimated Revenue</div>
@@ -173,7 +196,7 @@ export default function RoutesPage() {
         <div className="mb-6 flex gap-4">
           <button
             onClick={handleExport}
-            disabled={selectedCustomers.length === 0}
+            disabled={totalRouteStops === 0}
             className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-6 py-3 rounded font-semibold transition-colors"
           >
             Export Route for My Maps (CSV)
@@ -203,7 +226,7 @@ export default function RoutesPage() {
           <h2 className="text-xl font-semibold mb-3 text-slate-100">
             Selected Stops
           </h2>
-          {selectedCustomers.length > 0 ? (
+          {totalRouteStops > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
@@ -213,6 +236,9 @@ export default function RoutesPage() {
                     </th>
                     <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
                       Display Name
+                    </th>
+                    <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
+                      Mobile / Phone
                     </th>
                     <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
                       City
@@ -243,6 +269,9 @@ export default function RoutesPage() {
                       <td className="border border-slate-600 px-4 py-2 text-slate-300">
                         {customer.displayName}
                       </td>
+                      <td className="border border-slate-600 px-4 py-2 text-slate-300 text-sm whitespace-nowrap">
+                        {formatPhone(customer)}
+                      </td>
                       <td className="border border-slate-600 px-4 py-2 text-slate-300">
                         {customer.city}
                       </td>
@@ -260,16 +289,49 @@ export default function RoutesPage() {
                       </td>
                     </tr>
                   ))}
+                  {manualStops.map((stop, i) => (
+                    <tr
+                      key={stop.id}
+                      className="bg-purple-950/30 hover:bg-purple-950/40"
+                    >
+                      <td className="border border-slate-600 px-4 py-2 text-slate-300 font-semibold">
+                        {selectedCustomers.length + i + 1}
+                      </td>
+                      <td className="border border-slate-600 px-4 py-2 text-purple-200">
+                        {stop.label}{" "}
+                        <span className="text-slate-500 text-xs">(extra)</span>
+                      </td>
+                      <td className="border border-slate-600 px-4 py-2 text-slate-500">
+                        —
+                      </td>
+                      <td className="border border-slate-600 px-4 py-2 text-slate-500">
+                        —
+                      </td>
+                      <td className="border border-slate-600 px-4 py-2 text-slate-300 text-sm">
+                        {stop.address}
+                      </td>
+                      <td className="border border-slate-600 px-4 py-2 text-slate-500">
+                        —
+                      </td>
+                      <td className="border border-slate-600 px-4 py-2 text-slate-500">
+                        —
+                      </td>
+                      <td className="border border-slate-600 px-4 py-2 text-slate-500 text-sm">
+                        Map lookup
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           ) : (
             <div className="bg-slate-700 rounded p-8 text-center">
               <p className="text-slate-400 mb-4">
-                No customers selected for this route.
+                No stops on this route yet.
               </p>
               <p className="text-slate-500 text-sm">
-                Go to the <strong>Customers</strong> page to select customers for your route.
+                Select customers on the <strong>Customers</strong> page, or add
+                an address from the <strong>Map</strong> page.
               </p>
             </div>
           )}

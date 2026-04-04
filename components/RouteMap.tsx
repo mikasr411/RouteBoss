@@ -31,7 +31,7 @@ export default function RouteMap({ customers }: RouteMapProps) {
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [geocodingError, setGeocodingError] = useState<string | null>(null);
 
-  // Calculate center based on markers (must be called before any early returns)
+  // Calculate center based on markers
   const center = useMemo(() => {
     if (markers.length === 0) return defaultCenter;
     return {
@@ -105,6 +105,7 @@ export default function RouteMap({ customers }: RouteMapProps) {
     geocodeAddresses();
   }, [customers, apiKey]);
 
+  // Conditional rendering instead of early returns to satisfy ESLint
   if (!apiKey) {
     return (
       <div className="bg-slate-700 rounded p-8 text-center">
