@@ -15,7 +15,6 @@ import {
 import { parse } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 import { ManualRouteStop } from "@/types/manual-stop";
-import PhoneContactLinks from "@/components/PhoneContactLinks";
 
 const mapContainerStyle = {
   width: "100%",
@@ -672,6 +671,8 @@ export default function MapPage() {
                 }
               }}
               options={{
+                // One-finger pan on touch devices (default "cooperative" needs 2 fingers so the page can scroll)
+                gestureHandling: "greedy",
                 styles: [
                   {
                     featureType: "all",
@@ -788,33 +789,13 @@ export default function MapPage() {
                           <div className="font-semibold mb-2">
                             {customer.displayName}
                           </div>
-                          {(customer.mobileNumber || customer.homeNumber) && (
-                            <div className="mb-2">
-                              <PhoneContactLinks
-                                mobileNumber={customer.mobileNumber}
-                                homeNumber={customer.homeNumber}
-                                compact
-                              />
-                            </div>
-                          )}
-                          <div className="text-sm mb-1">
-                            {customer.city}, {customer.state}
-                          </div>
-                          <div className="text-sm mb-1">
-                            Last: {formatDate(customer.lastServiceDate)}
-                          </div>
-                          <div className="text-sm mb-1">
-                            Next: {formatDate(customer.nextServiceDate)}
-                          </div>
-                          <div className="text-sm mb-2">
-                            {customer.serviceFrequency}
-                          </div>
                           <button
+                            type="button"
                             onClick={() => {
                               toggleRouteSelection(customer.id);
                               setSelectedMarkerId(null);
                             }}
-                            className={`text-xs px-3 py-1 rounded ${
+                            className={`text-xs px-3 py-1.5 rounded w-full sm:w-auto mb-3 ${
                               customer.isSelectedForRoute
                                 ? "bg-red-600 text-white"
                                 : "bg-blue-600 text-white"
@@ -824,6 +805,18 @@ export default function MapPage() {
                               ? "Remove from Route"
                               : "Add to Route"}
                           </button>
+                          <div className="text-sm mb-1">
+                            {customer.city}, {customer.state}
+                          </div>
+                          <div className="text-sm mb-1">
+                            Last: {formatDate(customer.lastServiceDate)}
+                          </div>
+                          <div className="text-sm mb-1">
+                            Next: {formatDate(customer.nextServiceDate)}
+                          </div>
+                          <div className="text-sm">
+                            {customer.serviceFrequency}
+                          </div>
                         </div>
                       </InfoWindow>
                     )}
