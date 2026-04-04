@@ -411,7 +411,7 @@ export default function MapPage() {
 
         <div className="flex flex-1 flex-col md:flex-row min-h-0 min-w-0 overflow-hidden">
           {/* Sidebar — below map on mobile, left column on md+ */}
-          <div className="flex flex-col order-2 md:order-1 w-full min-w-0 md:w-80 md:max-w-[20rem] md:shrink-0 flex-1 min-h-0 max-h-[min(52vh,520px)] md:max-h-none overflow-hidden bg-slate-800 border-t md:border-t-0 md:border-r border-slate-700">
+          <div className="flex flex-col order-2 md:order-1 w-full min-w-0 md:w-80 md:max-w-[20rem] md:shrink-0 flex-1 min-h-0 overflow-y-auto overscroll-y-contain md:overflow-hidden md:overscroll-auto bg-slate-800 border-t md:border-t-0 md:border-r border-slate-700">
             {/* Geocode Management */}
             <div className="p-3 sm:p-4 border-b border-slate-700 order-2 md:order-none shrink-0">
               <div className="text-sm text-slate-400 mb-2">
@@ -602,8 +602,8 @@ export default function MapPage() {
               </div>
             </div>
 
-            {/* Customer List */}
-            <div className="flex-1 min-h-0 overflow-y-auto order-6 md:order-none">
+            {/* Customer list: on mobile, whole panel scrolls; on md+, only this section scrolls */}
+            <div className="flex-none md:flex-1 md:min-h-0 md:overflow-y-auto order-6 md:order-none">
               {customersWithCoords.length === 0 ? (
                 <div className="p-4 text-center text-slate-400 text-sm">
                   No customers with coordinates match filters.
