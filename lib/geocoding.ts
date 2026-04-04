@@ -1,10 +1,13 @@
+export type GeocodeResult = { lat: number; lng: number };
+
 /**
- * Geocode an address using Google Geocoding API
- * Returns lat/lng or null if geocoding fails
+ * Geocode an address (Google Geocoding HTTP API).
+ * Swap providers later by replacing this module or delegating to another
+ * function with the same signature.
  */
 export async function geocodeAddress(
   address: string
-): Promise<{ lat: number; lng: number } | null> {
+): Promise<GeocodeResult | null> {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
     console.warn("Google Maps API key not configured");

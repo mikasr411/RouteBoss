@@ -10,15 +10,18 @@ export default function Navbar() {
 
   return (
     <nav className="bg-slate-800 border-b border-slate-700">
-      <div className="max-w-6xl mx-auto px-4 py-4">
-        <div className="flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold text-slate-100">
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 sm:py-4 min-w-0">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between min-w-0">
+          <Link
+            href="/"
+            className="text-lg sm:text-xl font-bold text-slate-100 shrink-0"
+          >
             Route Boss
           </Link>
-          <div className="flex gap-6">
+          <div className="flex flex-wrap gap-1.5 sm:gap-2 md:gap-4 justify-start sm:justify-end min-w-0">
             <Link
               href="/import"
-              className={`px-3 py-2 rounded transition-colors ${
+              className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded text-sm transition-colors ${
                 isActive("/import")
                   ? "bg-slate-700 text-slate-100"
                   : "text-slate-300 hover:text-slate-100 hover:bg-slate-700/50"
@@ -28,7 +31,7 @@ export default function Navbar() {
             </Link>
             <Link
               href="/customers"
-              className={`px-3 py-2 rounded transition-colors ${
+              className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded text-sm transition-colors ${
                 isActive("/customers")
                   ? "bg-slate-700 text-slate-100"
                   : "text-slate-300 hover:text-slate-100 hover:bg-slate-700/50"
@@ -38,7 +41,7 @@ export default function Navbar() {
             </Link>
             <Link
               href="/routes"
-              className={`px-3 py-2 rounded transition-colors ${
+              className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded text-sm transition-colors ${
                 isActive("/routes")
                   ? "bg-slate-700 text-slate-100"
                   : "text-slate-300 hover:text-slate-100 hover:bg-slate-700/50"
@@ -48,7 +51,7 @@ export default function Navbar() {
             </Link>
             <Link
               href="/map"
-              className={`px-3 py-2 rounded transition-colors ${
+              className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded text-sm transition-colors ${
                 isActive("/map")
                   ? "bg-slate-700 text-slate-100"
                   : "text-slate-300 hover:text-slate-100 hover:bg-slate-700/50"
@@ -58,7 +61,7 @@ export default function Navbar() {
             </Link>
             <Link
               href="/gear"
-              className={`px-3 py-2 rounded transition-colors ${
+              className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded text-sm transition-colors ${
                 pathname?.startsWith("/gear")
                   ? "bg-slate-700 text-slate-100"
                   : "text-slate-300 hover:text-slate-100 hover:bg-slate-700/50"

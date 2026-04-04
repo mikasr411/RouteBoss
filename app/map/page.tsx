@@ -15,11 +15,12 @@ import {
 import { parse } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 import { ManualRouteStop } from "@/types/manual-stop";
+import PhoneContactLinks from "@/components/PhoneContactLinks";
 
 const mapContainerStyle = {
   width: "100%",
   height: "100%",
-};
+} as const;
 
 const defaultCenter = {
   lat: 36.7378, // Fresno area
@@ -376,19 +377,43 @@ export default function MapPage() {
     setSelectedMarkerId(null);
   }, [addressPreview, addressLookupLabel, addManualStop]);
 
+  // Google Maps often needs a resize after the container gets a real size (mobile layout).
+  useEffect(() => {
+    if (!isMapLoaded || !mapRef.current) return;
+    const map = mapRef.current;
+    const g = typeof window !== "undefined" ? window.google?.maps : undefined;
+    if (!g?.event) return;
+
+    const triggerResize = () => {
+      g.event.trigger(map, "resize");
+    };
+
+    triggerResize();
+    const t1 = window.setTimeout(triggerResize, 100);
+    const t2 = window.setTimeout(triggerResize, 400);
+    window.addEventListener("resize", triggerResize);
+    return () => {
+      window.removeEventListener("resize", triggerResize);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [isMapLoaded]);
+
   return (
     <MapLoader>
-      <div className="h-screen flex flex-col bg-slate-900">
+      <div className="flex flex-col h-[calc(100dvh-4.5rem)] sm:h-[calc(100dvh-4rem)] min-h-[300px] w-full max-w-full min-w-0 overflow-hidden bg-slate-900">
         {/* Header */}
-        <div className="bg-slate-800 border-b border-slate-700 px-4 py-3">
-          <h1 className="text-2xl font-bold text-slate-100">Map View</h1>
+        <div className="shrink-0 bg-slate-800 border-b border-slate-700 px-3 sm:px-4 py-2 sm:py-3">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100">
+            Map View
+          </h1>
         </div>
 
-        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-          {/* Sidebar */}
-          <div className="w-full md:w-80 bg-slate-800 border-r border-slate-700 flex flex-col overflow-hidden">
+        <div className="flex flex-1 flex-col md:flex-row min-h-0 min-w-0 overflow-hidden">
+          {/* Sidebar — below map on mobile, left column on md+ */}
+          <div className="flex flex-col order-2 md:order-1 w-full min-w-0 md:w-80 md:max-w-[20rem] md:shrink-0 flex-1 min-h-0 max-h-[min(52vh,520px)] md:max-h-none overflow-hidden bg-slate-800 border-t md:border-t-0 md:border-r border-slate-700">
             {/* Geocode Management */}
-            <div className="p-4 border-b border-slate-700">
+            <div className="p-3 sm:p-4 border-b border-slate-700 order-2 md:order-none shrink-0">
               <div className="text-sm text-slate-400 mb-2">
                 <div>With coordinates: {geocodeStats.withCoords}</div>
                 <div>Missing coordinates: {geocodeStats.withoutCoords}</div>
@@ -406,13 +431,13 @@ export default function MapPage() {
               )}
             </div>
 
-            {/* Look up address (add to route) */}
-            <div className="p-4 border-b border-slate-700 space-y-2">
+            {/* Locate address (add to route) — first under map on mobile */}
+            <div className="p-3 sm:p-4 border-b border-slate-700 space-y-2 order-1 md:order-none shrink-0 bg-slate-800/95">
               <div className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
-                Look up address
+                Locate address
               </div>
               <p className="text-xs text-slate-500">
-                Geocode any address, see it on the map, then add it to your route.
+                Search an address, preview on the map, then add it to your route.
               </p>
               <input
                 type="text"
@@ -435,9 +460,9 @@ export default function MapPage() {
                 type="button"
                 onClick={handleAddressLookup}
                 disabled={addressLookupLoading}
-                className="w-full bg-slate-600 hover:bg-slate-500 disabled:bg-slate-700 text-white px-3 py-2 rounded text-sm transition-colors"
+                className="w-full bg-slate-600 hover:bg-slate-500 disabled:bg-slate-700 text-white px-3 py-2.5 rounded text-sm font-medium transition-colors"
               >
-                {addressLookupLoading ? "Looking up…" : "Look up on map"}
+                {addressLookupLoading ? "Locating…" : "Locate on map"}
               </button>
               {addressLookupError && (
                 <p className="text-xs text-red-400">{addressLookupError}</p>
@@ -470,7 +495,7 @@ export default function MapPage() {
 
             {/* Manual stops on route */}
             {manualStops.length > 0 && (
-              <div className="p-4 border-b border-slate-700">
+              <div className="p-3 sm:p-4 border-b border-slate-700 order-3 md:order-none shrink-0">
                 <div className="text-xs font-semibold text-slate-200 uppercase tracking-wide mb-2">
                   Extra stops ({manualStops.length})
                 </div>
@@ -502,7 +527,7 @@ export default function MapPage() {
             )}
 
             {/* Summary */}
-            <div className="p-4 border-b border-slate-700">
+            <div className="p-3 sm:p-4 border-b border-slate-700 order-4 md:order-none shrink-0">
               <div className="text-sm text-slate-300">
                 <div>Visible customers: {customersWithCoords.length}</div>
                 <div>
@@ -518,7 +543,7 @@ export default function MapPage() {
             </div>
 
             {/* Filters */}
-            <div className="p-4 border-b border-slate-700 space-y-3">
+            <div className="p-3 sm:p-4 border-b border-slate-700 space-y-3 order-5 md:order-none shrink-0">
               <div>
                 <label className="block text-xs text-slate-300 mb-1">
                   Search by name
@@ -578,7 +603,7 @@ export default function MapPage() {
             </div>
 
             {/* Customer List */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto order-6 md:order-none">
               {customersWithCoords.length === 0 ? (
                 <div className="p-4 text-center text-slate-400 text-sm">
                   No customers with coordinates match filters.
@@ -629,10 +654,11 @@ export default function MapPage() {
             </div>
           </div>
 
-          {/* Map */}
-          <div className="flex-1 relative">
+          {/* Map — top on mobile, fills right column on md+ */}
+          <div className="relative order-1 md:order-2 w-full min-w-0 shrink-0 h-[min(42vh,360px)] min-h-[280px] max-h-[420px] md:max-h-none md:h-auto md:flex-1 md:min-h-0 border-b md:border-b-0 md:border-l border-slate-700">
             <GoogleMap
               mapContainerStyle={mapContainerStyle}
+              mapContainerClassName="block"
               center={mapCenter}
               zoom={defaultZoom}
               onLoad={(map) => {
@@ -762,6 +788,15 @@ export default function MapPage() {
                           <div className="font-semibold mb-2">
                             {customer.displayName}
                           </div>
+                          {(customer.mobileNumber || customer.homeNumber) && (
+                            <div className="mb-2">
+                              <PhoneContactLinks
+                                mobileNumber={customer.mobileNumber}
+                                homeNumber={customer.homeNumber}
+                                compact
+                              />
+                            </div>
+                          )}
                           <div className="text-sm mb-1">
                             {customer.city}, {customer.state}
                           </div>

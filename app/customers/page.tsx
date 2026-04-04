@@ -5,6 +5,7 @@ import { useCustomerStore } from "@/store/customer-store";
 import { Customer, ServiceFrequency } from "@/types/customer";
 import { formatDate, isCustomerDue, skipServiceCycle, calculateNextServiceDate } from "@/lib/utils";
 import { parse, compareAsc } from "date-fns";
+import PhoneContactLinks from "@/components/PhoneContactLinks";
 
 type SortOption = "city" | "lastService" | "nextService";
 
@@ -128,8 +129,8 @@ export default function CustomersPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+    <div className="max-w-6xl mx-auto px-3 sm:px-4 py-6 sm:py-8 w-full min-w-0 max-w-full">
+      <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 sm:p-6 w-full min-w-0">
         <h1 className="text-3xl font-bold mb-6 text-slate-100">Customers</h1>
 
         {/* Summary */}
@@ -218,8 +219,8 @@ export default function CustomersPage() {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
+        <div className="w-full min-w-0 max-w-full overflow-x-auto">
+          <table className="w-full border-collapse min-w-[720px]">
             <thead>
               <tr className="bg-slate-700">
                 <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
@@ -227,6 +228,9 @@ export default function CustomersPage() {
                 </th>
                 <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
                   Display Name
+                </th>
+                <th className="border border-slate-600 px-4 py-2 text-left text-slate-200 whitespace-nowrap">
+                  Phone
                 </th>
                 <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
                   City
@@ -268,6 +272,13 @@ export default function CustomersPage() {
                     </td>
                     <td className="border border-slate-600 px-4 py-2 text-slate-300">
                       {customer.displayName}
+                    </td>
+                    <td className="border border-slate-600 px-3 py-2 text-slate-300 text-sm">
+                      <PhoneContactLinks
+                        mobileNumber={customer.mobileNumber}
+                        homeNumber={customer.homeNumber}
+                        compact
+                      />
                     </td>
                     <td className="border border-slate-600 px-4 py-2 text-slate-300">
                       {customer.city}

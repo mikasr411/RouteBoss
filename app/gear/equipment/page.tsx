@@ -59,13 +59,15 @@ export default function EquipmentListPage() {
   }, [equipment, searchQuery, selectedType, selectedStatus]);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold text-slate-100">Equipment</h1>
+    <div className="max-w-6xl mx-auto px-3 sm:px-4 py-6 sm:py-8 w-full max-w-full min-w-0">
+      <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 sm:p-6 w-full min-w-0">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-100">
+            Equipment
+          </h1>
           <button
             onClick={() => router.push("/gear/equipment/new")}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-semibold transition-colors"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-semibold transition-colors w-full sm:w-auto shrink-0"
           >
             Add Equipment
           </button>
@@ -118,8 +120,8 @@ export default function EquipmentListPage() {
         </div>
 
         {/* Equipment Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
+        <div className="w-full max-w-full min-w-0 overflow-x-auto">
+          <table className="w-full border-collapse min-w-[560px]">
             <thead>
               <tr className="bg-slate-700">
                 <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">

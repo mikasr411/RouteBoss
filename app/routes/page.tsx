@@ -9,10 +9,7 @@ import {
   buildTemplateVariables,
   applyTemplate,
 } from "@/lib/message-template";
-
-function formatPhone(c: { mobileNumber?: string; homeNumber?: string }) {
-  return c.mobileNumber || c.homeNumber || "—";
-}
+import PhoneContactLinks from "@/components/PhoneContactLinks";
 
 export default function RoutesPage() {
   const { customers, updateCustomer, manualStops, clearManualStops } =
@@ -144,8 +141,8 @@ export default function RoutesPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+    <div className="max-w-6xl mx-auto px-3 sm:px-4 py-6 sm:py-8 w-full min-w-0 max-w-full">
+      <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 sm:p-6 w-full min-w-0">
         <h1 className="text-3xl font-bold mb-6 text-slate-100">Routes</h1>
 
         {/* Route Header */}
@@ -193,17 +190,17 @@ export default function RoutesPage() {
         </div>
 
         {/* Export Button */}
-        <div className="mb-6 flex gap-4">
+        <div className="mb-6 flex flex-col sm:flex-row gap-3 sm:gap-4">
           <button
             onClick={handleExport}
             disabled={totalRouteStops === 0}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-6 py-3 rounded font-semibold transition-colors"
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-6 py-3 rounded font-semibold transition-colors w-full sm:w-auto"
           >
             Export Route for My Maps (CSV)
           </button>
           <button
             onClick={handleClearSelection}
-            className="bg-slate-700 hover:bg-slate-600 text-slate-100 px-6 py-3 rounded transition-colors"
+            className="bg-slate-700 hover:bg-slate-600 text-slate-100 px-6 py-3 rounded transition-colors w-full sm:w-auto"
           >
             Clear Route Selection
           </button>
@@ -227,8 +224,65 @@ export default function RoutesPage() {
             Selected Stops
           </h2>
           {totalRouteStops > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
+            <>
+              {/* Compact cards on small screens */}
+              <div className="md:hidden space-y-3 mb-4">
+                {selectedCustomers.map((customer, index) => (
+                  <div
+                    key={customer.id}
+                    className="rounded-lg border border-slate-600 bg-slate-800 p-3 space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-slate-500 text-sm font-medium">
+                          #{index + 1}
+                        </span>{" "}
+                        <span className="font-semibold text-slate-100">
+                          {customer.displayName}
+                        </span>
+                      </div>
+                      <PhoneContactLinks
+                        mobileNumber={customer.mobileNumber}
+                        homeNumber={customer.homeNumber}
+                        compact
+                        showEmpty={false}
+                      />
+                    </div>
+                    <p className="text-sm text-slate-300 leading-snug">
+                      {customer.fullAddress}
+                    </p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-400">
+                      <span>
+                        {customer.city}, {customer.state}
+                      </span>
+                      <span>{customer.serviceFrequency}</span>
+                      <span>Next: {formatDate(customer.nextServiceDate)}</span>
+                    </div>
+                    {(customer.notes || customer.addressNotes) && (
+                      <p className="text-xs text-slate-500 border-t border-slate-600 pt-2">
+                        {customer.notes || customer.addressNotes}
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {manualStops.map((stop, i) => (
+                  <div
+                    key={stop.id}
+                    className="rounded-lg border border-purple-800/60 bg-purple-950/25 p-3 space-y-1"
+                  >
+                    <div className="font-semibold text-purple-200">
+                      #{selectedCustomers.length + i + 1} {stop.label}{" "}
+                      <span className="text-slate-500 text-xs font-normal">
+                        (extra)
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-300">{stop.address}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden md:block w-full max-w-full min-w-0 overflow-x-auto">
+              <table className="w-full border-collapse min-w-[640px]">
                 <thead>
                   <tr className="bg-slate-700">
                     <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
@@ -269,8 +323,12 @@ export default function RoutesPage() {
                       <td className="border border-slate-600 px-4 py-2 text-slate-300">
                         {customer.displayName}
                       </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-300 text-sm whitespace-nowrap">
-                        {formatPhone(customer)}
+                      <td className="border border-slate-600 px-3 py-2 text-slate-300 text-sm">
+                        <PhoneContactLinks
+                          mobileNumber={customer.mobileNumber}
+                          homeNumber={customer.homeNumber}
+                          compact
+                        />
                       </td>
                       <td className="border border-slate-600 px-4 py-2 text-slate-300">
                         {customer.city}
@@ -323,7 +381,8 @@ export default function RoutesPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           ) : (
             <div className="bg-slate-700 rounded p-8 text-center">
               <p className="text-slate-400 mb-4">
@@ -407,20 +466,24 @@ export default function RoutesPage() {
 
           {/* Generated Messages */}
           <div>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3">
               <h3 className="text-lg font-semibold text-slate-100">
                 Generated Messages
               </h3>
-              {copySuccess && (
-                <div className="text-green-400 text-sm">{copySuccess}</div>
-              )}
-              <button
-                onClick={handleCopyAll}
-                disabled={generatedMessages.length === 0}
-                className="bg-green-600 hover:bg-green-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded text-sm font-semibold transition-colors"
-              >
-                Copy All Messages
-              </button>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                {copySuccess && (
+                  <div className="text-green-400 text-sm sm:order-none">
+                    {copySuccess}
+                  </div>
+                )}
+                <button
+                  onClick={handleCopyAll}
+                  disabled={generatedMessages.length === 0}
+                  className="bg-green-600 hover:bg-green-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded text-sm font-semibold transition-colors w-full sm:w-auto"
+                >
+                  Copy All Messages
+                </button>
+              </div>
             </div>
 
             {generatedMessages.length === 0 ? (
@@ -436,23 +499,25 @@ export default function RoutesPage() {
                     key={item.customer.id}
                     className="bg-slate-700 rounded p-4 border border-slate-600"
                   >
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-2">
+                      <div className="min-w-0 space-y-1">
                         <div className="font-semibold text-slate-100">
                           #{index + 1} – {item.customer.displayName} (
                           {item.customer.city}, {item.customer.state})
                         </div>
-                        {item.customer.mobileNumber && (
-                          <div className="text-sm text-slate-400 mt-1">
-                            📱 {item.customer.mobileNumber}
-                          </div>
-                        )}
+                        <p className="text-sm text-slate-400 break-words">
+                          {item.customer.fullAddress}
+                        </p>
+                        <PhoneContactLinks
+                          mobileNumber={item.customer.mobileNumber}
+                          homeNumber={item.customer.homeNumber}
+                        />
                       </div>
                       <button
                         onClick={() =>
                           handleCopyMessage(item.message, item.customer.displayName)
                         }
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-colors"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm transition-colors shrink-0 self-start"
                       >
                         Copy
                       </button>

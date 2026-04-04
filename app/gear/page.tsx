@@ -2,8 +2,7 @@
 
 import { useMemo } from "react";
 import { useEquipmentStore } from "@/store/equipment-store";
-import { getUpcomingServices, getTotalMaintenanceCost, formatCurrency } from "@/lib/equipment-utils";
-import { format } from "date-fns";
+import { getUpcomingServices, formatCurrency } from "@/lib/equipment-utils";
 import Link from "next/link";
 
 export default function GearDashboard() {
@@ -32,9 +31,11 @@ export default function GearDashboard() {
   }, [services]);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-        <h1 className="text-3xl font-bold mb-6 text-slate-100">Gear Garage</h1>
+    <div className="max-w-6xl mx-auto px-3 sm:px-4 py-6 sm:py-8 w-full min-w-0">
+      <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 sm:p-6 w-full min-w-0">
+        <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-slate-100">
+          Gear Garage
+        </h1>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -69,8 +70,9 @@ export default function GearDashboard() {
             Upcoming Services
           </h2>
           {upcomingServices.length > 0 ? (
-            <div className="bg-slate-700 rounded overflow-hidden">
-              <table className="w-full border-collapse">
+            <div className="bg-slate-700 rounded overflow-hidden w-full max-w-full min-w-0">
+              <div className="w-full max-w-full min-w-0 overflow-x-auto -mx-1 px-1 sm:mx-0 sm:px-0">
+              <table className="w-full border-collapse min-w-[520px]">
                 <thead>
                   <tr className="bg-slate-600">
                     <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
@@ -142,6 +144,7 @@ export default function GearDashboard() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           ) : (
             <div className="bg-slate-700 rounded p-8 text-center">
@@ -153,16 +156,16 @@ export default function GearDashboard() {
         </div>
 
         {/* Quick Actions */}
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
           <Link
             href="/gear/equipment"
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded font-semibold transition-colors"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded font-semibold transition-colors text-center w-full sm:w-auto"
           >
             View All Equipment
           </Link>
           <Link
             href="/gear/equipment/new"
-            className="bg-slate-700 hover:bg-slate-600 text-slate-100 px-6 py-3 rounded transition-colors"
+            className="bg-slate-700 hover:bg-slate-600 text-slate-100 px-6 py-3 rounded transition-colors text-center w-full sm:w-auto"
           >
             Add Equipment
           </Link>
