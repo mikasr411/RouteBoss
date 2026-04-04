@@ -12,8 +12,13 @@ import {
 import PhoneContactLinks from "@/components/PhoneContactLinks";
 
 export default function RoutesPage() {
-  const { customers, updateCustomer, manualStops, clearManualStops } =
-    useCustomerStore();
+  const {
+    customers,
+    updateCustomer,
+    manualStops,
+    clearManualStops,
+    removeManualStop,
+  } = useCustomerStore();
   const [routeName, setRouteName] = useState(
     `Route ${format(new Date(), "MMM d, yyyy")}`
   );
@@ -99,6 +104,11 @@ export default function RoutesPage() {
       });
       clearManualStops();
     }
+  };
+
+  /** Same flag as Map checkboxes — Map and Routes stay in sync via the store. */
+  const removeCustomerFromRoute = (customerId: string) => {
+    updateCustomer(customerId, { isSelectedForRoute: false });
   };
 
   // Generate messages for selected customers
@@ -216,6 +226,13 @@ export default function RoutesPage() {
             </a>{" "}
             to visualize and optimize your route.
           </p>
+          <p className="text-blue-200/90 text-sm mt-2">
+            Removing someone here (e.g. they said no) updates the{" "}
+            <a href="/map" className="underline hover:text-blue-100">
+              Map
+            </a>{" "}
+            automatically — it uses the same route selection.
+          </p>
         </div>
 
         {/* Selected Customers List */}
@@ -263,6 +280,13 @@ export default function RoutesPage() {
                         {customer.notes || customer.addressNotes}
                       </p>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => removeCustomerFromRoute(customer.id)}
+                      className="w-full mt-1 text-sm font-medium rounded border border-red-800/60 bg-red-950/40 text-red-200 hover:bg-red-950/70 px-3 py-2 transition-colors"
+                    >
+                      Remove from route
+                    </button>
                   </div>
                 ))}
                 {manualStops.map((stop, i) => (
@@ -277,12 +301,19 @@ export default function RoutesPage() {
                       </span>
                     </div>
                     <p className="text-sm text-slate-300">{stop.address}</p>
+                    <button
+                      type="button"
+                      onClick={() => removeManualStop(stop.id)}
+                      className="w-full mt-2 text-sm font-medium rounded border border-red-800/60 bg-red-950/40 text-red-200 hover:bg-red-950/70 px-3 py-2 transition-colors"
+                    >
+                      Remove extra stop
+                    </button>
                   </div>
                 ))}
               </div>
 
               <div className="hidden md:block w-full max-w-full min-w-0 overflow-x-auto">
-              <table className="w-full border-collapse min-w-[640px]">
+              <table className="w-full border-collapse min-w-[720px]">
                 <thead>
                   <tr className="bg-slate-700">
                     <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
@@ -308,6 +339,9 @@ export default function RoutesPage() {
                     </th>
                     <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
                       Notes
+                    </th>
+                    <th className="border border-slate-600 px-3 py-2 text-left text-slate-200 whitespace-nowrap">
+                      Actions
                     </th>
                   </tr>
                 </thead>
@@ -345,6 +379,16 @@ export default function RoutesPage() {
                       <td className="border border-slate-600 px-4 py-2 text-slate-300 text-sm">
                         {customer.notes || customer.addressNotes || "—"}
                       </td>
+                      <td className="border border-slate-600 px-2 py-2">
+                        <button
+                          type="button"
+                          onClick={() => removeCustomerFromRoute(customer.id)}
+                          className="text-xs font-medium rounded border border-red-800/60 bg-red-950/40 text-red-200 hover:bg-red-950/70 px-2 py-1.5 transition-colors whitespace-nowrap"
+                          title="Remove from route (e.g. customer declined)"
+                        >
+                          Remove
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {manualStops.map((stop, i) => (
@@ -376,6 +420,16 @@ export default function RoutesPage() {
                       </td>
                       <td className="border border-slate-600 px-4 py-2 text-slate-500 text-sm">
                         Map lookup
+                      </td>
+                      <td className="border border-slate-600 px-2 py-2">
+                        <button
+                          type="button"
+                          onClick={() => removeManualStop(stop.id)}
+                          className="text-xs font-medium rounded border border-red-800/60 bg-red-950/40 text-red-200 hover:bg-red-950/70 px-2 py-1.5 transition-colors whitespace-nowrap"
+                          title="Remove this extra stop from the route"
+                        >
+                          Remove
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -513,14 +567,27 @@ export default function RoutesPage() {
                           homeNumber={item.customer.homeNumber}
                         />
                       </div>
-                      <button
-                        onClick={() =>
-                          handleCopyMessage(item.message, item.customer.displayName)
-                        }
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm transition-colors shrink-0 self-start"
-                      >
-                        Copy
-                      </button>
+                      <div className="flex flex-col sm:items-end gap-2 shrink-0 self-stretch sm:self-start">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleCopyMessage(item.message, item.customer.displayName)
+                          }
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm transition-colors w-full sm:w-auto"
+                        >
+                          Copy
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removeCustomerFromRoute(item.customer.id)
+                          }
+                          className="text-xs font-medium rounded border border-red-800/60 bg-red-950/40 text-red-200 hover:bg-red-950/70 px-3 py-1.5 transition-colors w-full sm:w-auto"
+                          title="Remove from route if they declined"
+                        >
+                          Remove from route
+                        </button>
+                      </div>
                     </div>
                     <div className="bg-slate-800 rounded p-3 border border-slate-600">
                       <pre className="text-slate-100 text-sm whitespace-pre-wrap font-sans">
