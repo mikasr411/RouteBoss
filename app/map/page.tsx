@@ -119,6 +119,9 @@ export default function MapPage() {
     null
   );
   const [isMapLoaded, setIsMapLoaded] = useState(false);
+  /** After choosing “tap another route pin”, next route marker click sets position. */
+  const [routeMoveAwaitingTargetFromIndex, setRouteMoveAwaitingTargetFromIndex] =
+    useState<number | null>(null);
 
   /** Address lookup (ad-hoc stop) */
   const [addressLookupInput, setAddressLookupInput] = useState("");
@@ -207,6 +210,14 @@ export default function MapPage() {
     const m = new Map<string, string>();
     routeStopOrder.forEach((k, i) => {
       m.set(`${k.kind}:${k.id}`, routeVisitLetter(i));
+    });
+    return m;
+  }, [routeStopOrder]);
+
+  const routeStopIndexByKey = useMemo(() => {
+    const m = new Map<string, number>();
+    routeStopOrder.forEach((k, i) => {
+      m.set(`${k.kind}:${k.id}`, i);
     });
     return m;
   }, [routeStopOrder]);
@@ -484,6 +495,39 @@ export default function MapPage() {
     [setRouteStopOrder]
   );
 
+  const onRouteStopMarkerClick = useCallback(
+    (keyStr: string, markerId: string) => {
+      const idx = routeStopIndexByKey.get(keyStr);
+      if (routeMoveAwaitingTargetFromIndex !== null) {
+        if (idx !== undefined) {
+          const from = routeMoveAwaitingTargetFromIndex;
+          if (from !== idx) {
+            reorderRouteStops(from, idx);
+          }
+          setRouteMoveAwaitingTargetFromIndex(null);
+          setSelectedMarkerId(markerId);
+          return;
+        }
+        setRouteMoveAwaitingTargetFromIndex(null);
+      }
+      setSelectedMarkerId(markerId);
+    },
+    [
+      routeMoveAwaitingTargetFromIndex,
+      routeStopIndexByKey,
+      reorderRouteStops,
+    ]
+  );
+
+  useEffect(() => {
+    if (routeMoveAwaitingTargetFromIndex === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRouteMoveAwaitingTargetFromIndex(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [routeMoveAwaitingTargetFromIndex]);
+
   // Google Maps often needs a resize after the container gets a real size (mobile layout).
   useEffect(() => {
     if (!isMapLoaded || !mapRef.current) return;
@@ -505,6 +549,51 @@ export default function MapPage() {
       window.clearTimeout(t2);
     };
   }, [isMapLoaded]);
+
+  function RouteMoveInMapInfo({ fromIndex }: { fromIndex: number }) {
+    if (routeStopOrder.length < 2) return null;
+    return (
+      <div className="mt-2 pt-2 border-t border-slate-300">
+        <p className="text-[11px] font-semibold text-slate-700 mb-1">
+          Move this stop to
+        </p>
+        <div className="flex flex-wrap gap-1 max-w-[220px]">
+          {routeStopOrder.map((_, i) => {
+            const L = routeVisitLetter(i);
+            const isHere = i === fromIndex;
+            return (
+              <button
+                key={i}
+                type="button"
+                disabled={isHere}
+                onClick={() => {
+                  reorderRouteStops(fromIndex, i);
+                  setSelectedMarkerId(null);
+                }}
+                className={`min-w-[1.625rem] px-1.5 py-1 rounded text-[11px] font-bold tabular-nums ${
+                  isHere
+                    ? "bg-amber-100 text-amber-900 ring-1 ring-amber-400 cursor-default"
+                    : "bg-amber-600 text-white hover:bg-amber-500"
+                }`}
+              >
+                {L}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          className="mt-2 w-full text-left text-[11px] font-medium text-cyan-800 hover:underline"
+          onClick={() => {
+            setRouteMoveAwaitingTargetFromIndex(fromIndex);
+            setSelectedMarkerId(null);
+          }}
+        >
+          Or tap another route pin on the map
+        </button>
+      </div>
+    );
+  }
 
   return (
     <MapLoader>
@@ -875,6 +964,23 @@ export default function MapPage() {
 
           {/* Map — top on mobile, fills right column on md+ */}
           <div className="relative order-1 md:order-2 w-full min-w-0 shrink-0 h-[min(42vh,360px)] min-h-[280px] max-h-[420px] md:max-h-none md:h-auto md:flex-1 md:min-h-0 border-b md:border-b-0 md:border-l border-slate-700">
+            {routeMoveAwaitingTargetFromIndex !== null && (
+              <div className="absolute left-2 right-2 top-2 z-[2] flex flex-wrap items-center justify-center gap-2 rounded-lg border border-cyan-600/60 bg-slate-950/95 px-2 py-2 text-center shadow-lg sm:left-4 sm:right-4">
+                <p className="text-xs text-cyan-100">
+                  Tap another route stop on the map (letter{" "}
+                  <span className="font-bold text-amber-300">A</span>,{" "}
+                  <span className="font-bold text-amber-300">B</span>…).{" "}
+                  <span className="text-slate-400">Esc to cancel.</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setRouteMoveAwaitingTargetFromIndex(null)}
+                  className="shrink-0 rounded border border-slate-500 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
             <GoogleMap
               mapContainerStyle={mapContainerStyle}
               mapContainerClassName="block"
@@ -1001,7 +1107,12 @@ export default function MapPage() {
                           ? { text: letter, ...routeMarkerLabelStyle }
                           : undefined
                       }
-                      onClick={() => setSelectedMarkerId(customer.id)}
+                      onClick={() =>
+                        onRouteStopMarkerClick(
+                          `customer:${customer.id}`,
+                          customer.id
+                        )
+                      }
                     >
                       {selectedMarkerId === customer.id && (
                         <InfoWindow
@@ -1045,6 +1156,15 @@ export default function MapPage() {
                             <div className="text-sm">
                               {customer.serviceFrequency}
                             </div>
+                            {letter ? (
+                              <RouteMoveInMapInfo
+                                fromIndex={
+                                  routeStopIndexByKey.get(
+                                    `customer:${customer.id}`
+                                  )!
+                                }
+                              />
+                            ) : null}
                           </div>
                         </InfoWindow>
                       )}
@@ -1059,7 +1179,10 @@ export default function MapPage() {
                     position={{ lat: routeStart.lat, lng: routeStart.lng }}
                     icon={createMarkerIcon("#06b6d4")}
                     label={{ text: "S", ...routeMarkerLabelStyle }}
-                    onClick={() => setSelectedMarkerId(START_MARKER_ID)}
+                    onClick={() => {
+                      setRouteMoveAwaitingTargetFromIndex(null);
+                      setSelectedMarkerId(START_MARKER_ID);
+                    }}
                     title={routeStart.label}
                   >
                     {selectedMarkerId === START_MARKER_ID && (
@@ -1109,7 +1232,9 @@ export default function MapPage() {
                           ? { text: letter, ...routeMarkerLabelStyle }
                           : undefined
                       }
-                      onClick={() => setSelectedMarkerId(stop.id)}
+                      onClick={() =>
+                        onRouteStopMarkerClick(`manual:${stop.id}`, stop.id)
+                      }
                       title={stop.label}
                     >
                       {selectedMarkerId === stop.id && (
@@ -1135,6 +1260,13 @@ export default function MapPage() {
                             >
                               Remove from route
                             </button>
+                            {letter ? (
+                              <RouteMoveInMapInfo
+                                fromIndex={
+                                  routeStopIndexByKey.get(`manual:${stop.id}`)!
+                                }
+                              />
+                            ) : null}
                           </div>
                         </InfoWindow>
                       )}
@@ -1151,7 +1283,10 @@ export default function MapPage() {
                     lng: addressPreview.lng,
                   }}
                   icon={createMarkerIcon("#fbbf24")}
-                  onClick={() => setSelectedMarkerId(PREVIEW_MARKER_ID)}
+                  onClick={() => {
+                    setRouteMoveAwaitingTargetFromIndex(null);
+                    setSelectedMarkerId(PREVIEW_MARKER_ID);
+                  }}
                 >
                   {selectedMarkerId === PREVIEW_MARKER_ID && (
                     <InfoWindow
