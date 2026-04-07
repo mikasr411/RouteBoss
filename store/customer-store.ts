@@ -15,17 +15,6 @@ function customerHasCoords(c: Customer): boolean {
 
 const routeKey = (k: RouteStopKey) => `${k.kind}:${k.id}`;
 
-function stopSortLabel(
-  k: RouteStopKey,
-  customers: Customer[],
-  manualStops: ManualRouteStop[]
-): string {
-  if (k.kind === "customer") {
-    return (customers.find((c) => c.id === k.id)?.displayName ?? "").trim();
-  }
-  return (manualStops.find((s) => s.id === k.id)?.label ?? "").trim();
-}
-
 function buildExpectedRouteKeys(
   customers: Customer[],
   manualStops: ManualRouteStop[]
@@ -42,17 +31,10 @@ function buildExpectedRouteKeys(
   return keys;
 }
 
-function sameRouteKeySet(a: RouteStopKey[], b: RouteStopKey[]): boolean {
-  if (a.length !== b.length) return false;
-  const sa = new Set(a.map(routeKey));
-  if (sa.size !== b.length) return false;
-  for (const k of b) {
-    if (!sa.has(routeKey(k))) return false;
-  }
-  return true;
-}
-
-/** When stops are added/removed → A–Z by display name / extra-stop label. Same set → keep order (↑↓). */
+/**
+ * Stops removed from the route are dropped; order of remaining stops is unchanged.
+ * Newly added stops are appended at the end (no alphabetical re-sort).
+ */
 function buildSyncedRouteOrder(
   order: RouteStopKey[],
   customers: Customer[],
@@ -62,21 +44,16 @@ function buildSyncedRouteOrder(
   const expectedSet = new Set(expected.map(routeKey));
 
   const filtered = order.filter((k) => expectedSet.has(routeKey(k)));
+  const filteredSet = new Set(filtered.map(routeKey));
 
-  if (sameRouteKeySet(filtered, expected)) {
-    return filtered;
+  const additions: RouteStopKey[] = [];
+  for (const k of expected) {
+    if (!filteredSet.has(routeKey(k))) {
+      additions.push(k);
+    }
   }
 
-  return [...expected].sort((a, b) => {
-    const cmp = stopSortLabel(a, customers, manualStops).localeCompare(
-      stopSortLabel(b, customers, manualStops),
-      undefined,
-      { sensitivity: "base" }
-    );
-    if (cmp !== 0) return cmp;
-    if (a.kind !== b.kind) return a.kind.localeCompare(b.kind);
-    return a.id.localeCompare(b.id);
-  });
+  return [...filtered, ...additions];
 }
 
 type CustomerStore = {
