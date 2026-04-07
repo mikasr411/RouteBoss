@@ -85,7 +85,7 @@ export default function MapPage() {
     routeStopOrder,
     routeStart,
     syncRouteStopOrder,
-    moveRouteStopInOrder,
+    setRouteStopOrder,
     setRouteStart,
     clearRouteStart,
   } = useCustomerStore();
@@ -103,6 +103,10 @@ export default function MapPage() {
   const [directionsError, setDirectionsError] = useState<string | null>(null);
   const mapRef = useRef<any | null>(null);
   const directionsServiceRef = useRef<any | null>(null);
+  const routeDragFromIndex = useRef<number | null>(null);
+  const [routeDragOverIndex, setRouteDragOverIndex] = useState<number | null>(
+    null
+  );
   const [isMapLoaded, setIsMapLoaded] = useState(false);
 
   /** Address lookup (ad-hoc stop) */
@@ -444,6 +448,23 @@ export default function MapPage() {
     [updateCustomer, removeManualStop]
   );
 
+  const endRouteDrag = useCallback(() => {
+    routeDragFromIndex.current = null;
+    setRouteDragOverIndex(null);
+  }, []);
+
+  const reorderRouteStops = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (fromIndex === toIndex) return;
+      const prev = useCustomerStore.getState().routeStopOrder;
+      const next = [...prev];
+      const [removed] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, removed);
+      setRouteStopOrder(next);
+    },
+    [setRouteStopOrder]
+  );
+
   const stopLabel = useCallback(
     (kind: "customer" | "manual", id: string) => {
       if (kind === "customer") {
@@ -488,7 +509,7 @@ export default function MapPage() {
 
         <div className="flex flex-1 flex-col md:flex-row min-h-0 min-w-0 overflow-hidden">
           {/* Sidebar — below map on mobile, left column on md+ */}
-          <div className="flex flex-col order-2 md:order-1 w-full min-w-0 md:w-80 md:max-w-[20rem] md:shrink-0 flex-1 min-h-0 overflow-y-auto overscroll-y-contain md:overflow-hidden md:overscroll-auto bg-slate-800 border-t md:border-t-0 md:border-r border-slate-700">
+          <div className="flex flex-col order-2 md:order-1 w-full min-w-0 md:w-80 md:max-w-[20rem] md:shrink-0 flex-1 min-h-0 overflow-y-auto overscroll-y-contain bg-slate-800 border-t md:border-t-0 md:border-r border-slate-700">
             {/* Geocode Management */}
             <div className="p-3 sm:p-4 border-b border-slate-700 order-2 md:order-none shrink-0">
               <div className="text-sm text-slate-400 mb-2">
@@ -650,8 +671,9 @@ export default function MapPage() {
                 On this route ({routeStopOrder.length})
               </div>
               <p className="text-xs text-slate-500">
-                Use ↑ ↓ to set visit order. Remove takes them off the route
-                (same as Map checkboxes).
+                Drag the handle ⋮⋮ to reorder. Stops sort A–Z when you add or
+                remove someone. Remove takes them off the route (same as Map
+                checkboxes).
               </p>
               {routeStopOrder.length === 0 ? (
                 <p className="text-xs text-slate-500 italic">
@@ -659,12 +681,48 @@ export default function MapPage() {
                   address above.
                 </p>
               ) : (
-                <ul className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
+                <ul className="space-y-1.5 pr-0.5" onDragEnd={endRouteDrag}>
                   {routeStopOrder.map((key, index) => (
                     <li
                       key={`${key.kind}:${key.id}`}
-                      className="flex items-center gap-1.5 bg-slate-700/70 rounded px-2 py-1.5 text-xs"
+                      className={`flex items-center gap-1.5 rounded px-2 py-1.5 text-xs transition-colors ${
+                        routeDragOverIndex === index
+                          ? "bg-cyan-900/50 ring-1 ring-cyan-500/70"
+                          : "bg-slate-700/70"
+                      }`}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        setRouteDragOverIndex(index);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const from =
+                          routeDragFromIndex.current ??
+                          parseInt(e.dataTransfer.getData("text/plain"), 10);
+                        const len =
+                          useCustomerStore.getState().routeStopOrder.length;
+                        if (Number.isNaN(from) || from < 0 || from >= len) {
+                          endRouteDrag();
+                          return;
+                        }
+                        reorderRouteStops(from, index);
+                        endRouteDrag();
+                      }}
                     >
+                      <span
+                        draggable
+                        onDragStart={(e) => {
+                          routeDragFromIndex.current = index;
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", String(index));
+                        }}
+                        className="cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-300 px-0.5 select-none shrink-0 touch-none text-base leading-none"
+                        title="Drag to reorder"
+                        aria-label="Drag to reorder"
+                      >
+                        ⋮⋮
+                      </span>
                       <span className="text-slate-500 w-5 shrink-0 tabular-nums">
                         {index + 1}.
                       </span>
@@ -674,34 +732,14 @@ export default function MapPage() {
                           <span className="text-purple-300 ml-1">(extra)</span>
                         ) : null}
                       </span>
-                      <div className="flex shrink-0 gap-0.5">
-                        <button
-                          type="button"
-                          disabled={index === 0}
-                          onClick={() => moveRouteStopInOrder(index, -1)}
-                          className="px-1.5 py-0.5 rounded bg-slate-600 text-slate-100 hover:bg-slate-500 disabled:opacity-25 disabled:cursor-not-allowed text-xs font-semibold"
-                          aria-label="Move up"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          disabled={index === routeStopOrder.length - 1}
-                          onClick={() => moveRouteStopInOrder(index, 1)}
-                          className="px-1.5 py-0.5 rounded bg-slate-600 text-slate-100 hover:bg-slate-500 disabled:opacity-25 disabled:cursor-not-allowed text-xs font-semibold"
-                          aria-label="Move down"
-                        >
-                          ↓
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeStopFromRoute(key.kind, key.id)}
-                          className="px-1.5 py-0.5 rounded bg-red-900/50 text-red-200 hover:bg-red-900/80 text-xs"
-                          aria-label="Remove from route"
-                        >
-                          ✕
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeStopFromRoute(key.kind, key.id)}
+                        className="px-1.5 py-0.5 rounded bg-red-900/50 text-red-200 hover:bg-red-900/80 text-xs shrink-0"
+                        aria-label="Remove from route"
+                      >
+                        ✕
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -769,7 +807,7 @@ export default function MapPage() {
             </div>
 
             {/* Customer list: on mobile, whole panel scrolls; on md+, only this section scrolls */}
-            <div className="flex-none md:flex-1 md:min-h-0 md:overflow-y-auto order-7 md:order-none">
+            <div className="flex-none order-7 md:order-none">
               {customersWithCoords.length === 0 ? (
                 <div className="p-4 text-center text-slate-400 text-sm">
                   No customers with coordinates match filters.

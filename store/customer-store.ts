@@ -13,39 +13,70 @@ function customerHasCoords(c: Customer): boolean {
   );
 }
 
+const routeKey = (k: RouteStopKey) => `${k.kind}:${k.id}`;
+
+function stopSortLabel(
+  k: RouteStopKey,
+  customers: Customer[],
+  manualStops: ManualRouteStop[]
+): string {
+  if (k.kind === "customer") {
+    return (customers.find((c) => c.id === k.id)?.displayName ?? "").trim();
+  }
+  return (manualStops.find((s) => s.id === k.id)?.label ?? "").trim();
+}
+
+function buildExpectedRouteKeys(
+  customers: Customer[],
+  manualStops: ManualRouteStop[]
+): RouteStopKey[] {
+  const keys: RouteStopKey[] = [];
+  for (const c of customers) {
+    if (c.isSelectedForRoute && customerHasCoords(c)) {
+      keys.push({ kind: "customer", id: c.id });
+    }
+  }
+  for (const s of manualStops) {
+    keys.push({ kind: "manual", id: s.id });
+  }
+  return keys;
+}
+
+function sameRouteKeySet(a: RouteStopKey[], b: RouteStopKey[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = new Set(a.map(routeKey));
+  if (sa.size !== b.length) return false;
+  for (const k of b) {
+    if (!sa.has(routeKey(k))) return false;
+  }
+  return true;
+}
+
+/** When stops are added/removed → A–Z by display name / extra-stop label. Same set → keep order (↑↓). */
 function buildSyncedRouteOrder(
   order: RouteStopKey[],
   customers: Customer[],
   manualStops: ManualRouteStop[]
 ): RouteStopKey[] {
-  const selectedIds = new Set(
-    customers
-      .filter((c) => c.isSelectedForRoute && customerHasCoords(c))
-      .map((c) => c.id)
-  );
-  const manualIds = new Set(manualStops.map((s) => s.id));
-  const next = order.filter((k) =>
-    k.kind === "customer" ? selectedIds.has(k.id) : manualIds.has(k.id)
-  );
-  const key = (k: RouteStopKey) => `${k.kind}:${k.id}`;
-  const seen = new Set(next.map(key));
-  for (const c of customers) {
-    if (
-      c.isSelectedForRoute &&
-      customerHasCoords(c) &&
-      !seen.has(`customer:${c.id}`)
-    ) {
-      next.push({ kind: "customer", id: c.id });
-      seen.add(`customer:${c.id}`);
-    }
+  const expected = buildExpectedRouteKeys(customers, manualStops);
+  const expectedSet = new Set(expected.map(routeKey));
+
+  const filtered = order.filter((k) => expectedSet.has(routeKey(k)));
+
+  if (sameRouteKeySet(filtered, expected)) {
+    return filtered;
   }
-  for (const s of manualStops) {
-    if (!seen.has(`manual:${s.id}`)) {
-      next.push({ kind: "manual", id: s.id });
-      seen.add(`manual:${s.id}`);
-    }
-  }
-  return next;
+
+  return [...expected].sort((a, b) => {
+    const cmp = stopSortLabel(a, customers, manualStops).localeCompare(
+      stopSortLabel(b, customers, manualStops),
+      undefined,
+      { sensitivity: "base" }
+    );
+    if (cmp !== 0) return cmp;
+    if (a.kind !== b.kind) return a.kind.localeCompare(b.kind);
+    return a.id.localeCompare(b.id);
+  });
 }
 
 type CustomerStore = {
