@@ -75,6 +75,27 @@ const createMarkerIcon = (color: string): any => {
 const PREVIEW_MARKER_ID = "__address_preview__";
 const START_MARKER_ID = "__route_start__";
 
+/** A, B, … Z, AA, AB … — matches map marker labels for visit order */
+function routeVisitLetter(zeroBasedIndex: number): string {
+  let i = zeroBasedIndex;
+  let label = "";
+  while (i >= 0) {
+    label = String.fromCharCode(65 + (i % 26)) + label;
+    i = Math.floor(i / 26) - 1;
+  }
+  return label;
+}
+
+const routeMarkerLabelStyle: {
+  color: string;
+  fontSize: string;
+  fontWeight: string;
+} = {
+  color: "#ffffff",
+  fontSize: "12px",
+  fontWeight: "bold",
+};
+
 export default function MapPage() {
   const {
     customers,
@@ -191,6 +212,14 @@ export default function MapPage() {
   useEffect(() => {
     syncRouteStopOrder();
   }, [customers, manualStops, syncRouteStopOrder]);
+
+  const routeStopLetterByKey = useMemo(() => {
+    const m = new Map<string, string>();
+    routeStopOrder.forEach((k, i) => {
+      m.set(`${k.kind}:${k.id}`, routeVisitLetter(i));
+    });
+    return m;
+  }, [routeStopOrder]);
 
   // Driving path: optional start, then ordered stops (respects drag / ↑↓ on Map)
   const orderedRoutePoints = useMemo(() => {
@@ -647,6 +676,9 @@ export default function MapPage() {
               {routeStart && (
                 <div className="rounded border border-cyan-600/40 bg-cyan-950/25 p-2 space-y-2">
                   <div>
+                    <div className="text-xs font-bold text-cyan-300/90 mb-1">
+                      Map pin label: S
+                    </div>
                     <div className="text-sm font-medium text-cyan-200">
                       {routeStart.label}
                     </div>
@@ -671,9 +703,12 @@ export default function MapPage() {
                 On this route ({routeStopOrder.length})
               </div>
               <p className="text-xs text-slate-500">
-                Drag the handle ⋮⋮ to reorder. Stops sort A–Z when you add or
-                remove someone. Remove takes them off the route (same as Map
-                checkboxes).
+                Each stop is labeled <strong className="text-slate-300">A</strong>
+                , <strong className="text-slate-300">B</strong>,{" "}
+                <strong className="text-slate-300">C</strong>… — the same letter
+                appears on its map pin. Starting point (if set) shows{" "}
+                <strong className="text-slate-300">S</strong> on the map. Drag ⋮⋮
+                to reorder. Stops sort A–Z by name when you add or remove someone.
               </p>
               {routeStopOrder.length === 0 ? (
                 <p className="text-xs text-slate-500 italic">
@@ -723,8 +758,11 @@ export default function MapPage() {
                       >
                         ⋮⋮
                       </span>
-                      <span className="text-slate-500 w-5 shrink-0 tabular-nums">
-                        {index + 1}.
+                      <span
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-900 text-sm font-bold text-amber-300 tabular-nums ring-1 ring-amber-600/50"
+                        title={`Map marker: ${routeVisitLetter(index)}`}
+                      >
+                        {routeVisitLetter(index)}
                       </span>
                       <span className="flex-1 min-w-0 truncate text-slate-100">
                         {stopLabel(key.kind, key.id)}
@@ -816,6 +854,9 @@ export default function MapPage() {
                 <div className="divide-y divide-slate-700">
                   {customersWithCoords.map((customer) => {
                     const isDue = isCustomerDue(customer);
+                    const routeLetter = routeStopLetterByKey.get(
+                      `customer:${customer.id}`
+                    );
                     return (
                       <div
                         key={customer.id}
@@ -836,8 +877,16 @@ export default function MapPage() {
                             onClick={(e) => e.stopPropagation()}
                           />
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-slate-100 text-sm">
-                              {customer.displayName}
+                            <div className="font-medium text-slate-100 text-sm flex items-center gap-2 flex-wrap">
+                              {routeLetter ? (
+                                <span
+                                  className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded bg-slate-900 px-1 text-xs font-bold text-amber-300 ring-1 ring-amber-600/50"
+                                  title="Letter on map pin"
+                                >
+                                  {routeLetter}
+                                </span>
+                              ) : null}
+                              <span>{customer.displayName}</span>
                             </div>
                             <div className="text-xs text-slate-400">
                               {customer.city}, {customer.state}
@@ -972,14 +1021,20 @@ export default function MapPage() {
                 const color = getMarkerColor(customer);
                 // Always create icon fresh to ensure it updates
                 const icon = createMarkerIcon(color);
+                const letter = routeStopLetterByKey.get(`customer:${customer.id}`);
                 return (
                   <Marker
-                    key={`${customer.id}-${customer.isSelectedForRoute ? 'selected' : 'unselected'}-${color}`}
+                    key={`${customer.id}-${customer.isSelectedForRoute ? 'selected' : 'unselected'}-${color}-${letter ?? "x"}`}
                     position={{
                       lat: customer.latitude!,
                       lng: customer.longitude!,
                     }}
                     icon={icon}
+                    label={
+                      letter
+                        ? { text: letter, ...routeMarkerLabelStyle }
+                        : undefined
+                    }
                     onClick={() => setSelectedMarkerId(customer.id)}
                   >
                     {selectedMarkerId === customer.id && (
@@ -991,6 +1046,11 @@ export default function MapPage() {
                         }}
                       >
                         <div className="text-slate-900">
+                          {letter ? (
+                            <div className="text-xs font-bold text-amber-800 mb-1">
+                              Route stop {letter}
+                            </div>
+                          ) : null}
                           <div className="font-semibold mb-2">
                             {customer.displayName}
                           </div>
@@ -1035,6 +1095,7 @@ export default function MapPage() {
                   key={routeStart.id}
                   position={{ lat: routeStart.lat, lng: routeStart.lng }}
                   icon={createMarkerIcon("#06b6d4")}
+                  label={{ text: "S", ...routeMarkerLabelStyle }}
                   onClick={() => setSelectedMarkerId(START_MARKER_ID)}
                   title={routeStart.label}
                 >
@@ -1047,6 +1108,9 @@ export default function MapPage() {
                       }}
                     >
                       <div className="text-slate-900 max-w-[220px]">
+                        <div className="text-xs font-bold text-cyan-800 mb-1">
+                          Map pin: S — starting point
+                        </div>
                         <div className="font-semibold text-cyan-800 mb-1">
                           {routeStart.label}
                         </div>
@@ -1070,11 +1134,17 @@ export default function MapPage() {
               {/* Manual / extra route stops */}
               {manualStops.map((stop) => {
                 const icon = createMarkerIcon("#a855f7");
+                const letter = routeStopLetterByKey.get(`manual:${stop.id}`);
                 return (
                   <Marker
-                    key={stop.id}
+                    key={`${stop.id}-${letter ?? "x"}`}
                     position={{ lat: stop.lat, lng: stop.lng }}
                     icon={icon}
+                    label={
+                      letter
+                        ? { text: letter, ...routeMarkerLabelStyle }
+                        : undefined
+                    }
                     onClick={() => setSelectedMarkerId(stop.id)}
                     title={stop.label}
                   >
@@ -1084,6 +1154,11 @@ export default function MapPage() {
                         position={{ lat: stop.lat, lng: stop.lng }}
                       >
                         <div className="text-slate-900 max-w-[220px]">
+                          {letter ? (
+                            <div className="text-xs font-bold text-amber-800 mb-1">
+                              Route stop {letter}
+                            </div>
+                          ) : null}
                           <div className="font-semibold mb-1">{stop.label}</div>
                           <div className="text-xs mb-2">{stop.address}</div>
                           <button
