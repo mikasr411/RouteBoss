@@ -1329,9 +1329,12 @@ export default function MapPage() {
                 </Marker>
               )}
 
-              {/* Directions Route */}
+              {/* Route line only — our Markers are the pins (DirectionsRenderer defaults add red A/B/C pins). */}
               {directionsResult && (
-                <DirectionsRenderer directions={directionsResult} />
+                <DirectionsRenderer
+                  directions={directionsResult}
+                  options={{ suppressMarkers: true }}
+                />
               )}
             </GoogleMap>
           </div>
