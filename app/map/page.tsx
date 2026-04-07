@@ -114,6 +114,11 @@ function markerIconForColorAndLabel(color: string, letter: string | undefined) {
 const PREVIEW_MARKER_ID = "__address_preview__";
 const START_MARKER_ID = "__route_start__";
 
+type PlaceSuggestion = {
+  placeId: string;
+  description: string;
+};
+
 export default function MapPage() {
   const {
     customers,
@@ -142,6 +147,7 @@ export default function MapPage() {
   const [directionsError, setDirectionsError] = useState<string | null>(null);
   const mapRef = useRef<any | null>(null);
   const directionsServiceRef = useRef<any | null>(null);
+  const placesAutocompleteRef = useRef<any | null>(null);
   const routeDragFromIndex = useRef<number | null>(null);
   const [routeDragOverIndex, setRouteDragOverIndex] = useState<number | null>(
     null
@@ -156,6 +162,10 @@ export default function MapPage() {
   const [addressLookupInput, setAddressLookupInput] = useState("");
   const [addressLookupLabel, setAddressLookupLabel] = useState("Extra stop");
   const [addressLookupLoading, setAddressLookupLoading] = useState(false);
+  const [addressSuggestions, setAddressSuggestions] = useState<PlaceSuggestion[]>(
+    []
+  );
+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
   const [addressLookupError, setAddressLookupError] = useState<string | null>(
     null
   );
@@ -169,6 +179,8 @@ export default function MapPage() {
   const [startAddressInput, setStartAddressInput] = useState("");
   const [startLabelInput, setStartLabelInput] = useState("Starting point");
   const [startLookupLoading, setStartLookupLoading] = useState(false);
+  const [startSuggestions, setStartSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [showStartSuggestions, setShowStartSuggestions] = useState(false);
   const [startLookupError, setStartLookupError] = useState<string | null>(null);
 
   // Get unique cities
@@ -443,8 +455,82 @@ export default function MapPage() {
     [customers, updateCustomer]
   );
 
-  const handleAddressLookup = useCallback(async () => {
-    const q = addressLookupInput.trim();
+  const getAutocompleteService = useCallback(() => {
+    if (typeof window === "undefined") return null;
+    const google = (window as any).google;
+    if (!google?.maps?.places?.AutocompleteService) return null;
+    if (!placesAutocompleteRef.current) {
+      placesAutocompleteRef.current = new google.maps.places.AutocompleteService();
+    }
+    return placesAutocompleteRef.current;
+  }, []);
+
+  const fetchAddressSuggestions = useCallback(
+    (value: string) => {
+      const q = value.trim();
+      if (q.length < 3) {
+        setAddressSuggestions([]);
+        return;
+      }
+      const svc = getAutocompleteService();
+      if (!svc) return;
+      const google = (window as any).google;
+      svc.getPlacePredictions(
+        { input: q, types: ["address"] },
+        (predictions: any[] | null, status: any) => {
+          if (
+            status !== google.maps.places.PlacesServiceStatus.OK ||
+            !predictions
+          ) {
+            setAddressSuggestions([]);
+            return;
+          }
+          setAddressSuggestions(
+            predictions.slice(0, 6).map((p) => ({
+              placeId: p.place_id,
+              description: p.description,
+            }))
+          );
+        }
+      );
+    },
+    [getAutocompleteService]
+  );
+
+  const fetchStartSuggestions = useCallback(
+    (value: string) => {
+      const q = value.trim();
+      if (q.length < 3) {
+        setStartSuggestions([]);
+        return;
+      }
+      const svc = getAutocompleteService();
+      if (!svc) return;
+      const google = (window as any).google;
+      svc.getPlacePredictions(
+        { input: q, types: ["address"] },
+        (predictions: any[] | null, status: any) => {
+          if (
+            status !== google.maps.places.PlacesServiceStatus.OK ||
+            !predictions
+          ) {
+            setStartSuggestions([]);
+            return;
+          }
+          setStartSuggestions(
+            predictions.slice(0, 6).map((p) => ({
+              placeId: p.place_id,
+              description: p.description,
+            }))
+          );
+        }
+      );
+    },
+    [getAutocompleteService]
+  );
+
+  const locateAddress = useCallback(async (rawAddress: string) => {
+    const q = rawAddress.trim();
     if (!q) {
       setAddressLookupError("Enter an address");
       return;
@@ -467,7 +553,11 @@ export default function MapPage() {
     } finally {
       setAddressLookupLoading(false);
     }
-  }, [addressLookupInput]);
+  }, []);
+
+  const handleAddressLookup = useCallback(async () => {
+    await locateAddress(addressLookupInput);
+  }, [addressLookupInput, locateAddress]);
 
   const handleAddPreviewToRoute = useCallback(() => {
     if (!addressPreview) return;
@@ -485,8 +575,8 @@ export default function MapPage() {
     setSelectedMarkerId(null);
   }, [addressPreview, addressLookupLabel, addManualStop]);
 
-  const handleLocateAndSaveStart = useCallback(async () => {
-    const q = startAddressInput.trim();
+  const locateAndSaveStart = useCallback(async (rawAddress: string) => {
+    const q = rawAddress.trim();
     if (!q) {
       setStartLookupError("Enter a starting address");
       return;
@@ -514,7 +604,11 @@ export default function MapPage() {
     } finally {
       setStartLookupLoading(false);
     }
-  }, [startAddressInput, startLabelInput, setRouteStart]);
+  }, [startLabelInput, setRouteStart]);
+
+  const handleLocateAndSaveStart = useCallback(async () => {
+    await locateAndSaveStart(startAddressInput);
+  }, [locateAndSaveStart, startAddressInput]);
 
   const removeStopFromRoute = useCallback(
     (kind: "customer" | "manual", id: string) => {
@@ -755,16 +849,53 @@ export default function MapPage() {
               <p className="text-xs text-slate-500">
                 Search an address, preview on the map, then add it to your route.
               </p>
-              <input
-                type="text"
-                value={addressLookupInput}
-                onChange={(e) => setAddressLookupInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddressLookup();
-                }}
-                placeholder="123 Main St, City, ST"
-                className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={addressLookupInput}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setAddressLookupInput(v);
+                    setShowAddressSuggestions(true);
+                    fetchAddressSuggestions(v);
+                  }}
+                  onFocus={() => {
+                    setShowAddressSuggestions(true);
+                    fetchAddressSuggestions(addressLookupInput);
+                  }}
+                  onBlur={() => {
+                    window.setTimeout(() => setShowAddressSuggestions(false), 120);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      setShowAddressSuggestions(false);
+                      handleAddressLookup();
+                    }
+                  }}
+                  placeholder="123 Main St, City, ST"
+                  autoComplete="off"
+                  className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {showAddressSuggestions && addressSuggestions.length > 0 ? (
+                  <div className="absolute z-20 mt-1 w-full rounded border border-slate-600 bg-slate-800 shadow-xl overflow-hidden">
+                    {addressSuggestions.map((s) => (
+                      <button
+                        key={s.placeId}
+                        type="button"
+                        className="w-full text-left px-2 py-2 text-sm text-slate-100 hover:bg-slate-700 border-b border-slate-700 last:border-b-0"
+                        onMouseDown={() => {
+                          setAddressLookupInput(s.description);
+                          setAddressSuggestions([]);
+                          setShowAddressSuggestions(false);
+                          locateAddress(s.description);
+                        }}
+                      >
+                        {s.description}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
               <input
                 type="text"
                 value={addressLookupLabel}
@@ -841,16 +972,53 @@ export default function MapPage() {
                 placeholder="Label (e.g. Shop)"
                 className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-600"
               />
-              <input
-                type="text"
-                value={startAddressInput}
-                onChange={(e) => setStartAddressInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleLocateAndSaveStart();
-                }}
-                placeholder="123 Main St, City, ST"
-                className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-600"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={startAddressInput}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setStartAddressInput(v);
+                    setShowStartSuggestions(true);
+                    fetchStartSuggestions(v);
+                  }}
+                  onFocus={() => {
+                    setShowStartSuggestions(true);
+                    fetchStartSuggestions(startAddressInput);
+                  }}
+                  onBlur={() => {
+                    window.setTimeout(() => setShowStartSuggestions(false), 120);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      setShowStartSuggestions(false);
+                      handleLocateAndSaveStart();
+                    }
+                  }}
+                  placeholder="123 Main St, City, ST"
+                  autoComplete="off"
+                  className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-600"
+                />
+                {showStartSuggestions && startSuggestions.length > 0 ? (
+                  <div className="absolute z-20 mt-1 w-full rounded border border-slate-600 bg-slate-800 shadow-xl overflow-hidden">
+                    {startSuggestions.map((s) => (
+                      <button
+                        key={s.placeId}
+                        type="button"
+                        className="w-full text-left px-2 py-2 text-sm text-slate-100 hover:bg-slate-700 border-b border-slate-700 last:border-b-0"
+                        onMouseDown={() => {
+                          setStartAddressInput(s.description);
+                          setStartSuggestions([]);
+                          setShowStartSuggestions(false);
+                          locateAndSaveStart(s.description);
+                        }}
+                      >
+                        {s.description}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
               <button
                 type="button"
                 onClick={handleLocateAndSaveStart}
