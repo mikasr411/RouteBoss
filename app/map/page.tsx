@@ -147,6 +147,7 @@ export default function MapPage() {
     null
   );
   const [isMapLoaded, setIsMapLoaded] = useState(false);
+  const [isOptimizingRoute, setIsOptimizingRoute] = useState(false);
   /** After choosing “tap another route pin”, next route marker click sets position. */
   const [routeMoveAwaitingTargetFromIndex, setRouteMoveAwaitingTargetFromIndex] =
     useState<number | null>(null);
@@ -269,6 +270,26 @@ export default function MapPage() {
     }
     return pts;
   }, [routeStopOrder, customers, manualStops, routeStart]);
+
+  const routeStopsWithCoords = useMemo(() => {
+    const stops: Array<{
+      key: (typeof routeStopOrder)[number];
+      lat: number;
+      lng: number;
+    }> = [];
+    for (const key of routeStopOrder) {
+      if (key.kind === "customer") {
+        const c = customers.find((x) => x.id === key.id);
+        if (c && hasCoordinates(c)) {
+          stops.push({ key, lat: c.latitude!, lng: c.longitude! });
+        }
+      } else {
+        const s = manualStops.find((x) => x.id === key.id);
+        if (s) stops.push({ key, lat: s.lat, lng: s.lng });
+      }
+    }
+    return stops;
+  }, [routeStopOrder, customers, manualStops]);
 
   // Geocode statistics
   const geocodeStats = useMemo(() => {
@@ -522,6 +543,77 @@ export default function MapPage() {
     },
     [setRouteStopOrder]
   );
+
+  const handleOptimizeRoute = useCallback(() => {
+    if (!routeStart) {
+      setDirectionsError("Set a starting point before optimizing the route.");
+      return;
+    }
+    if (routeStopsWithCoords.length < 2) {
+      setDirectionsError(
+        "Add at least 2 route stops to optimize from the starting point."
+      );
+      return;
+    }
+    if (typeof window === "undefined" || !(window as any).google?.maps) {
+      setDirectionsError("Google Maps API not loaded");
+      return;
+    }
+
+    const google = (window as any).google;
+    if (!google.maps.DirectionsService) {
+      setDirectionsError("Directions API not available");
+      return;
+    }
+    if (!directionsServiceRef.current) {
+      try {
+        directionsServiceRef.current = new google.maps.DirectionsService();
+      } catch {
+        setDirectionsError("Failed to initialize Directions Service");
+        return;
+      }
+    }
+
+    const destination = routeStopsWithCoords[routeStopsWithCoords.length - 1];
+    const waypointStops = routeStopsWithCoords.slice(0, -1);
+
+    setIsOptimizingRoute(true);
+    setDirectionsError(null);
+    directionsServiceRef.current.route(
+      {
+        origin: { lat: routeStart.lat, lng: routeStart.lng },
+        destination: { lat: destination.lat, lng: destination.lng },
+        waypoints: waypointStops.map((s) => ({
+          location: { lat: s.lat, lng: s.lng },
+          stopover: true,
+        })),
+        optimizeWaypoints: true,
+        travelMode: google.maps.TravelMode.DRIVING,
+      },
+      (result: any, status: any) => {
+        setIsOptimizingRoute(false);
+        if (status === "OK" && result) {
+          const optimizedWaypointOrder: number[] =
+            result.routes?.[0]?.waypoint_order ?? [];
+          if (optimizedWaypointOrder.length !== waypointStops.length) {
+            setDirectionsError(
+              "Could not optimize route order right now. Please try again."
+            );
+            return;
+          }
+          const nextOrder = [
+            ...optimizedWaypointOrder.map((i) => waypointStops[i].key),
+            destination.key,
+          ];
+          setRouteStopOrder(nextOrder);
+          setDirectionsResult(result);
+          setDirectionsError(null);
+          return;
+        }
+        setDirectionsError(`Route optimization failed: ${status}.`);
+      }
+    );
+  }, [routeStart, routeStopsWithCoords, setRouteStopOrder]);
 
   const onRouteStopMarkerClick = useCallback(
     (keyStr: string, markerId: string) => {
@@ -806,6 +898,21 @@ export default function MapPage() {
                 the Routes page. Starting point (if set) shows{" "}
                 <strong className="text-slate-300">S</strong>. Drag ⋮⋮ to reorder.
               </p>
+              <button
+                type="button"
+                onClick={handleOptimizeRoute}
+                disabled={!routeStart || routeStopOrder.length < 2 || isOptimizingRoute}
+                className="w-full bg-emerald-700 hover:bg-emerald-600 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+                title={
+                  !routeStart
+                    ? "Set a starting point first"
+                    : routeStopOrder.length < 2
+                      ? "Need at least 2 stops"
+                      : "Optimize route from your starting point"
+                }
+              >
+                {isOptimizingRoute ? "Optomizing route…" : "Optomize Route"}
+              </button>
               {routeStopOrder.length === 0 ? (
                 <p className="text-xs text-slate-500 italic">
                   No stops yet — select customers in the list below or add an
