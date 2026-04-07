@@ -73,18 +73,46 @@ const createMarkerIcon = (color: string): any => {
   return icon;
 };
 
+const LABELED_MARKER_PX = 36;
+
+function escapeSvgText(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** One pin: colored circle + letter (no separate Maps `label` bubble). */
+function createLabeledCircleIcon(color: string, label: string): any {
+  if (typeof window === "undefined") return null;
+  const google = (window as any).google;
+  if (!google?.maps?.Size || !google?.maps?.Point) return null;
+
+  const safe = escapeSvgText(label);
+  const n = label.length;
+  const fontSize = n <= 1 ? 14 : n === 2 ? 11 : 9;
+  const s = LABELED_MARKER_PX;
+  const c = s / 2;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}"><circle cx="${c}" cy="${c}" r="15" fill="${color}" stroke="#ffffff" stroke-width="2"/><text x="${c}" y="${c}" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-family="system-ui,-apple-system,BlinkMacSystemFont,sans-serif" font-weight="700" font-size="${fontSize}">${safe}</text></svg>`;
+  const url = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  return {
+    url,
+    scaledSize: new google.maps.Size(s, s),
+    anchor: new google.maps.Point(c, c),
+  };
+}
+
+function markerIconForColorAndLabel(color: string, letter: string | undefined) {
+  if (letter) {
+    const labeled = createLabeledCircleIcon(color, letter);
+    if (labeled) return labeled;
+  }
+  return createMarkerIcon(color);
+}
+
 const PREVIEW_MARKER_ID = "__address_preview__";
 const START_MARKER_ID = "__route_start__";
-
-const routeMarkerLabelStyle: {
-  color: string;
-  fontSize: string;
-  fontWeight: string;
-} = {
-  color: "#ffffff",
-  fontSize: "12px",
-  fontWeight: "bold",
-};
 
 export default function MapPage() {
   const {
@@ -1091,8 +1119,8 @@ export default function MapPage() {
               {/* Markers */}
               {customersWithCoords.map((customer) => {
                 const color = getMarkerColor(customer);
-                const icon = createMarkerIcon(color);
                 const letter = routeStopLetterByKey.get(`customer:${customer.id}`);
+                const icon = markerIconForColorAndLabel(color, letter);
                 const pos = {
                   lat: customer.latitude!,
                   lng: customer.longitude!,
@@ -1102,11 +1130,6 @@ export default function MapPage() {
                       key={`${customer.id}-${customer.isSelectedForRoute ? "sel" : "un"}-${color}-${letter ?? "x"}`}
                       position={pos}
                       icon={icon}
-                      label={
-                        letter
-                          ? { text: letter, ...routeMarkerLabelStyle }
-                          : undefined
-                      }
                       onClick={() =>
                         onRouteStopMarkerClick(
                           `customer:${customer.id}`,
@@ -1177,8 +1200,7 @@ export default function MapPage() {
                   <Marker
                     key={routeStart.id}
                     position={{ lat: routeStart.lat, lng: routeStart.lng }}
-                    icon={createMarkerIcon("#06b6d4")}
-                    label={{ text: "S", ...routeMarkerLabelStyle }}
+                    icon={markerIconForColorAndLabel("#06b6d4", "S")}
                     onClick={() => {
                       setRouteMoveAwaitingTargetFromIndex(null);
                       setSelectedMarkerId(START_MARKER_ID);
@@ -1219,19 +1241,14 @@ export default function MapPage() {
 
               {/* Manual / extra route stops */}
               {manualStops.map((stop) => {
-                const icon = createMarkerIcon("#a855f7");
                 const letter = routeStopLetterByKey.get(`manual:${stop.id}`);
+                const icon = markerIconForColorAndLabel("#a855f7", letter);
                 const pos = { lat: stop.lat, lng: stop.lng };
                 return (
                     <Marker
                       key={`${stop.id}-${letter ?? "x"}`}
                       position={pos}
                       icon={icon}
-                      label={
-                        letter
-                          ? { text: letter, ...routeMarkerLabelStyle }
-                          : undefined
-                      }
                       onClick={() =>
                         onRouteStopMarkerClick(`manual:${stop.id}`, stop.id)
                       }
