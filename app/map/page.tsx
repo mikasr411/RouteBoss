@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useState,
-  useMemo,
-  useCallback,
-  useRef,
-  useEffect,
-  Fragment,
-} from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useCustomerStore } from "@/store/customer-store";
 import { Customer } from "@/types/customer";
 import { formatDate, isCustomerDue } from "@/lib/utils";
@@ -18,10 +11,10 @@ import {
   Marker,
   InfoWindow,
   DirectionsRenderer,
-  OverlayView,
 } from "@react-google-maps/api";
 import { v4 as uuidv4 } from "uuid";
 import { ManualRouteStop } from "@/types/manual-stop";
+import { routeVisitLetter } from "@/lib/route-visit-letter";
 
 const mapContainerStyle = {
   width: "100%",
@@ -83,17 +76,6 @@ const createMarkerIcon = (color: string): any => {
 const PREVIEW_MARKER_ID = "__address_preview__";
 const START_MARKER_ID = "__route_start__";
 
-/** A, B, … Z, AA, AB … — matches map marker labels for visit order */
-function routeVisitLetter(zeroBasedIndex: number): string {
-  let i = zeroBasedIndex;
-  let label = "";
-  while (i >= 0) {
-    label = String.fromCharCode(65 + (i % 26)) + label;
-    i = Math.floor(i / 26) - 1;
-  }
-  return label;
-}
-
 const routeMarkerLabelStyle: {
   color: string;
   fontSize: string;
@@ -103,39 +85,6 @@ const routeMarkerLabelStyle: {
   fontSize: "12px",
   fontWeight: "bold",
 };
-
-/** Small nameplate under a pin (pointer-events none so marker stays clickable) */
-function MapNameplate({
-  position,
-  line1,
-  line2,
-}: {
-  position: { lat: number; lng: number };
-  line1?: string;
-  line2: string;
-}) {
-  return (
-    <OverlayView
-      position={position}
-      mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-      getPixelPositionOffset={(width) => ({
-        x: -(width / 2),
-        y: 16,
-      })}
-    >
-      <div className="pointer-events-none z-[1] flex max-w-[min(11rem,calc(100vw-2rem))] flex-col items-center gap-0.5 rounded-md border border-slate-500/90 bg-slate-950/95 px-2 py-1 shadow-lg ring-1 ring-black/40">
-        {line1 ? (
-          <span className="text-[10px] font-bold leading-none text-amber-300">
-            {line1}
-          </span>
-        ) : null}
-        <span className="max-w-full text-center text-[10px] font-semibold leading-tight text-slate-50 sm:text-xs">
-          {line2}
-        </span>
-      </div>
-    </OverlayView>
-  );
-}
 
 export default function MapPage() {
   const {
@@ -535,16 +484,6 @@ export default function MapPage() {
     [setRouteStopOrder]
   );
 
-  const stopLabel = useCallback(
-    (kind: "customer" | "manual", id: string) => {
-      if (kind === "customer") {
-        return customers.find((c) => c.id === id)?.displayName ?? "Customer";
-      }
-      return manualStops.find((s) => s.id === id)?.label ?? "Extra stop";
-    },
-    [customers, manualStops]
-  );
-
   // Google Maps often needs a resize after the container gets a real size (mobile layout).
   useEffect(() => {
     if (!isMapLoaded || !mapRef.current) return;
@@ -744,12 +683,11 @@ export default function MapPage() {
                 On this route ({routeStopOrder.length})
               </div>
               <p className="text-xs text-slate-500">
-                Each stop is labeled <strong className="text-slate-300">A</strong>
-                , <strong className="text-slate-300">B</strong>,{" "}
-                <strong className="text-slate-300">C</strong>… — the same letter
-                appears on its map pin. Starting point (if set) shows{" "}
-                <strong className="text-slate-300">S</strong> on the map. Drag ⋮⋮
-                to reorder. Stops sort A–Z by name when you add or remove someone.
+                Visit order is <strong className="text-slate-300">A</strong>,{" "}
+                <strong className="text-slate-300">B</strong>,{" "}
+                <strong className="text-slate-300">C</strong>… on map pins and on
+                the Routes page. Starting point (if set) shows{" "}
+                <strong className="text-slate-300">S</strong>. Drag ⋮⋮ to reorder.
               </p>
               {routeStopOrder.length === 0 ? (
                 <p className="text-xs text-slate-500 italic">
@@ -761,7 +699,7 @@ export default function MapPage() {
                   {routeStopOrder.map((key, index) => (
                     <li
                       key={`${key.kind}:${key.id}`}
-                      className={`flex items-center gap-1.5 rounded px-2 py-1.5 text-xs transition-colors ${
+                      className={`flex items-center gap-1.5 rounded px-2 py-1.5 text-xs transition-colors w-full ${
                         routeDragOverIndex === index
                           ? "bg-cyan-900/50 ring-1 ring-cyan-500/70"
                           : "bg-slate-700/70"
@@ -805,16 +743,15 @@ export default function MapPage() {
                       >
                         {routeVisitLetter(index)}
                       </span>
-                      <span className="flex-1 min-w-0 truncate text-slate-100">
-                        {stopLabel(key.kind, key.id)}
-                        {key.kind === "manual" ? (
-                          <span className="text-purple-300 ml-1">(extra)</span>
-                        ) : null}
-                      </span>
+                      {key.kind === "manual" ? (
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-purple-300/90 shrink-0">
+                          Extra
+                        </span>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => removeStopFromRoute(key.kind, key.id)}
-                        className="px-1.5 py-0.5 rounded bg-red-900/50 text-red-200 hover:bg-red-900/80 text-xs shrink-0"
+                        className="px-1.5 py-0.5 rounded bg-red-900/50 text-red-200 hover:bg-red-900/80 text-xs shrink-0 ml-auto"
                         aria-label="Remove from route"
                       >
                         ✕
@@ -894,10 +831,6 @@ export default function MapPage() {
               ) : (
                 <div className="divide-y divide-slate-700">
                   {customersWithCoords.map((customer) => {
-                    const isDue = isCustomerDue(customer);
-                    const routeLetter = routeStopLetterByKey.get(
-                      `customer:${customer.id}`
-                    );
                     return (
                       <div
                         key={customer.id}
@@ -918,16 +851,8 @@ export default function MapPage() {
                             onClick={(e) => e.stopPropagation()}
                           />
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-slate-100 text-sm flex items-center gap-2 flex-wrap">
-                              {routeLetter ? (
-                                <span
-                                  className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded bg-slate-900 px-1 text-xs font-bold text-amber-300 ring-1 ring-amber-600/50"
-                                  title="Letter on map pin"
-                                >
-                                  {routeLetter}
-                                </span>
-                              ) : null}
-                              <span>{customer.displayName}</span>
+                            <div className="font-medium text-slate-100 text-sm">
+                              {customer.displayName}
                             </div>
                             <div className="text-xs text-slate-400">
                               {customer.city}, {customer.state}
@@ -1057,7 +982,7 @@ export default function MapPage() {
                 ],
               }}
             >
-              {/* Markers + nameplates */}
+              {/* Markers */}
               {customersWithCoords.map((customer) => {
                 const color = getMarkerColor(customer);
                 const icon = createMarkerIcon(color);
@@ -1067,12 +992,15 @@ export default function MapPage() {
                   lng: customer.longitude!,
                 };
                 return (
-                  <Fragment
-                    key={`${customer.id}-${customer.isSelectedForRoute ? "sel" : "un"}-${color}-${letter ?? "x"}`}
-                  >
                     <Marker
+                      key={`${customer.id}-${customer.isSelectedForRoute ? "sel" : "un"}-${color}-${letter ?? "x"}`}
                       position={pos}
                       icon={icon}
+                      label={
+                        letter
+                          ? { text: letter, ...routeMarkerLabelStyle }
+                          : undefined
+                      }
                       onClick={() => setSelectedMarkerId(customer.id)}
                     >
                       {selectedMarkerId === customer.id && (
@@ -1121,19 +1049,13 @@ export default function MapPage() {
                         </InfoWindow>
                       )}
                     </Marker>
-                    <MapNameplate
-                      position={pos}
-                      line1={letter}
-                      line2={customer.displayName}
-                    />
-                  </Fragment>
                 );
               })}
 
-              {/* Starting point marker + nameplate */}
+              {/* Starting point */}
               {routeStart && (
-                <Fragment key={routeStart.id}>
                   <Marker
+                    key={routeStart.id}
                     position={{ lat: routeStart.lat, lng: routeStart.lng }}
                     icon={createMarkerIcon("#06b6d4")}
                     label={{ text: "S", ...routeMarkerLabelStyle }}
@@ -1170,12 +1092,6 @@ export default function MapPage() {
                       </InfoWindow>
                     )}
                   </Marker>
-                  <MapNameplate
-                    position={{ lat: routeStart.lat, lng: routeStart.lng }}
-                    line1="S"
-                    line2={routeStart.label}
-                  />
-                </Fragment>
               )}
 
               {/* Manual / extra route stops */}
@@ -1184,10 +1100,15 @@ export default function MapPage() {
                 const letter = routeStopLetterByKey.get(`manual:${stop.id}`);
                 const pos = { lat: stop.lat, lng: stop.lng };
                 return (
-                  <Fragment key={`${stop.id}-${letter ?? "x"}`}>
                     <Marker
+                      key={`${stop.id}-${letter ?? "x"}`}
                       position={pos}
                       icon={icon}
+                      label={
+                        letter
+                          ? { text: letter, ...routeMarkerLabelStyle }
+                          : undefined
+                      }
                       onClick={() => setSelectedMarkerId(stop.id)}
                       title={stop.label}
                     >
@@ -1218,19 +1139,13 @@ export default function MapPage() {
                         </InfoWindow>
                       )}
                     </Marker>
-                    <MapNameplate
-                      position={pos}
-                      line1={letter}
-                      line2={stop.label}
-                    />
-                  </Fragment>
                 );
               })}
 
               {/* Preview before adding to route */}
               {addressPreview && (
-                <Fragment key={PREVIEW_MARKER_ID}>
                 <Marker
+                  key={PREVIEW_MARKER_ID}
                   position={{
                     lat: addressPreview.lat,
                     lng: addressPreview.lng,
@@ -1260,19 +1175,6 @@ export default function MapPage() {
                     </InfoWindow>
                   )}
                 </Marker>
-                <MapNameplate
-                  position={{
-                    lat: addressPreview.lat,
-                    lng: addressPreview.lng,
-                  }}
-                  line1="Preview"
-                  line2={
-                    addressPreview.address.length > 36
-                      ? `${addressPreview.address.slice(0, 34)}…`
-                      : addressPreview.address
-                  }
-                />
-                </Fragment>
               )}
 
               {/* Directions Route */}

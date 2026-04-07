@@ -12,6 +12,9 @@ import {
 import PhoneContactLinks from "@/components/PhoneContactLinks";
 import { useRouteHistoryStore } from "@/store/route-history-store";
 import type { SavedRoute } from "@/types/saved-route";
+import type { Customer } from "@/types/customer";
+import type { ManualRouteStop } from "@/types/manual-stop";
+import { routeVisitLetter } from "@/lib/route-visit-letter";
 
 export default function RoutesPage() {
   const {
@@ -21,6 +24,7 @@ export default function RoutesPage() {
     clearManualStops,
     removeManualStop,
     setManualStops,
+    routeStopOrder,
   } = useCustomerStore();
   const { savedRoutes, saveRoute, removeSavedRoute } = useRouteHistoryStore();
   const [routeName, setRouteName] = useState(
@@ -48,18 +52,104 @@ export default function RoutesPage() {
   }, [template]);
 
   const selectedCustomers = useMemo(() => {
-    return customers
-      .filter((c) => c.isSelectedForRoute)
-      .sort((a, b) => {
-        // Sort by city, then by display name
-        const cityCompare = a.city.localeCompare(b.city);
-        if (cityCompare !== 0) return cityCompare;
-        return a.displayName.localeCompare(b.displayName);
-      });
+    return customers.filter((c) => c.isSelectedForRoute);
   }, [customers]);
 
-  const totalRouteStops =
-    selectedCustomers.length + manualStops.length;
+  const totalRouteStops = selectedCustomers.length + manualStops.length;
+
+  /** Same visit order as Map “On this route” (routeStopOrder), with fallbacks. */
+  type VisitStopRow =
+    | { kind: "customer"; letter: string; customer: Customer }
+    | { kind: "manual"; letter: string; stop: ManualRouteStop };
+
+  const visitStopsInOrder = useMemo((): VisitStopRow[] => {
+    const rows: VisitStopRow[] = [];
+    let idx = 0;
+    const seenCustomer = new Set<string>();
+    const seenManual = new Set<string>();
+
+    if (routeStopOrder.length > 0) {
+      for (const key of routeStopOrder) {
+        if (key.kind === "customer") {
+          const c = customers.find(
+            (x) => x.id === key.id && x.isSelectedForRoute
+          );
+          if (c) {
+            rows.push({
+              kind: "customer",
+              letter: routeVisitLetter(idx++),
+              customer: c,
+            });
+            seenCustomer.add(c.id);
+          }
+        } else {
+          const s = manualStops.find((x) => x.id === key.id);
+          if (s) {
+            rows.push({
+              kind: "manual",
+              letter: routeVisitLetter(idx++),
+              stop: s,
+            });
+            seenManual.add(s.id);
+          }
+        }
+      }
+    }
+
+    for (const c of customers) {
+      if (!c.isSelectedForRoute || seenCustomer.has(c.id)) continue;
+      rows.push({
+        kind: "customer",
+        letter: routeVisitLetter(idx++),
+        customer: c,
+      });
+      seenCustomer.add(c.id);
+    }
+    for (const s of manualStops) {
+      if (seenManual.has(s.id)) continue;
+      rows.push({
+        kind: "manual",
+        letter: routeVisitLetter(idx++),
+        stop: s,
+      });
+      seenManual.add(s.id);
+    }
+
+    if (rows.length === 0 && totalRouteStops > 0) {
+      const sorted = customers
+        .filter((c) => c.isSelectedForRoute)
+        .sort((a, b) => {
+          const cityCompare = a.city.localeCompare(b.city);
+          if (cityCompare !== 0) return cityCompare;
+          return a.displayName.localeCompare(b.displayName);
+        });
+      idx = 0;
+      for (const c of sorted) {
+        rows.push({
+          kind: "customer",
+          letter: routeVisitLetter(idx++),
+          customer: c,
+        });
+      }
+      for (const s of manualStops) {
+        rows.push({
+          kind: "manual",
+          letter: routeVisitLetter(idx++),
+          stop: s,
+        });
+      }
+    }
+
+    return rows;
+  }, [customers, manualStops, routeStopOrder, totalRouteStops]);
+
+  const customersInVisitOrder = useMemo(
+    () =>
+      visitStopsInOrder
+        .filter((r) => r.kind === "customer")
+        .map((r) => r.customer),
+    [visitStopsInOrder]
+  );
 
   const handleExport = () => {
     if (totalRouteStops === 0) {
@@ -149,7 +239,7 @@ export default function RoutesPage() {
     saveRoute({
       name: routeName,
       routeDate,
-      customerIds: selectedCustomers.map((c) => c.id),
+      customerIds: customersInVisitOrder.map((c) => c.id),
       manualStops,
       routeStopOrder: snap.routeStopOrder,
       routeStart: snap.routeStart,
@@ -228,14 +318,16 @@ export default function RoutesPage() {
     }
   };
 
-  // Generate messages for selected customers
+  // Generate messages in map visit order (customers only; skips extra stops)
   const generatedMessages = useMemo(() => {
-    return selectedCustomers.map((customer) => {
-      const variables = buildTemplateVariables(customer);
-      const message = applyTemplate(template, variables);
-      return { customer, message };
-    });
-  }, [selectedCustomers, template]);
+    return visitStopsInOrder
+      .filter((r) => r.kind === "customer")
+      .map((r) => {
+        const variables = buildTemplateVariables(r.customer);
+        const message = applyTemplate(template, variables);
+        return { customer: r.customer, letter: r.letter, message };
+      });
+  }, [visitStopsInOrder, template]);
 
   // Copy single message
   const handleCopyMessage = async (message: string, customerName: string) => {
@@ -253,8 +345,8 @@ export default function RoutesPage() {
     if (generatedMessages.length === 0) return;
 
     const allMessages = generatedMessages
-      .map((item, index) => {
-        return `#${index + 1} - ${item.customer.displayName} (${item.customer.city}, ${item.customer.state})\n\n${item.message}`;
+      .map((item) => {
+        return `${item.letter} — ${item.customer.displayName} (${item.customer.city}, ${item.customer.state})\n\n${item.message}`;
       })
       .join("\n\n---\n\n");
 
@@ -440,72 +532,84 @@ export default function RoutesPage() {
             <>
               {/* Compact cards on small screens */}
               <div className="md:hidden space-y-3 mb-4">
-                {selectedCustomers.map((customer, index) => (
-                  <div
-                    key={customer.id}
-                    className="rounded-lg border border-slate-600 bg-slate-800 p-3 space-y-2"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <span className="text-slate-500 text-sm font-medium">
-                          #{index + 1}
-                        </span>{" "}
-                        <span className="font-semibold text-slate-100">
-                          {customer.displayName}
+                {visitStopsInOrder.map((row) =>
+                  row.kind === "customer" ? (
+                    <div
+                      key={`customer:${row.customer.id}`}
+                      className="rounded-lg border border-slate-600 bg-slate-800 p-3 space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 min-w-0">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-900 text-sm font-bold text-amber-300 ring-1 ring-amber-600/50">
+                            {row.letter}
+                          </span>
+                          <div className="min-w-0">
+                            <span className="font-semibold text-slate-100 block">
+                              {row.customer.displayName}
+                            </span>
+                          </div>
+                        </div>
+                        <PhoneContactLinks
+                          mobileNumber={row.customer.mobileNumber}
+                          homeNumber={row.customer.homeNumber}
+                          compact
+                          showEmpty={false}
+                        />
+                      </div>
+                      <p className="text-sm text-slate-300 leading-snug">
+                        {row.customer.fullAddress}
+                      </p>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-400">
+                        <span>
+                          {row.customer.city}, {row.customer.state}
+                        </span>
+                        <span>{row.customer.serviceFrequency}</span>
+                        <span>
+                          Next: {formatDate(row.customer.nextServiceDate)}
                         </span>
                       </div>
-                      <PhoneContactLinks
-                        mobileNumber={customer.mobileNumber}
-                        homeNumber={customer.homeNumber}
-                        compact
-                        showEmpty={false}
-                      />
+                      {(row.customer.notes || row.customer.addressNotes) && (
+                        <p className="text-xs text-slate-500 border-t border-slate-600 pt-2">
+                          {row.customer.notes || row.customer.addressNotes}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          removeCustomerFromRoute(row.customer.id)
+                        }
+                        className="w-full mt-1 text-sm font-medium rounded border border-red-800/60 bg-red-950/40 text-red-200 hover:bg-red-950/70 px-3 py-2 transition-colors"
+                      >
+                        Remove from route
+                      </button>
                     </div>
-                    <p className="text-sm text-slate-300 leading-snug">
-                      {customer.fullAddress}
-                    </p>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-400">
-                      <span>
-                        {customer.city}, {customer.state}
-                      </span>
-                      <span>{customer.serviceFrequency}</span>
-                      <span>Next: {formatDate(customer.nextServiceDate)}</span>
-                    </div>
-                    {(customer.notes || customer.addressNotes) && (
-                      <p className="text-xs text-slate-500 border-t border-slate-600 pt-2">
-                        {customer.notes || customer.addressNotes}
-                      </p>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeCustomerFromRoute(customer.id)}
-                      className="w-full mt-1 text-sm font-medium rounded border border-red-800/60 bg-red-950/40 text-red-200 hover:bg-red-950/70 px-3 py-2 transition-colors"
+                  ) : (
+                    <div
+                      key={`manual:${row.stop.id}`}
+                      className="rounded-lg border border-purple-800/60 bg-purple-950/25 p-3 space-y-1"
                     >
-                      Remove from route
-                    </button>
-                  </div>
-                ))}
-                {manualStops.map((stop, i) => (
-                  <div
-                    key={stop.id}
-                    className="rounded-lg border border-purple-800/60 bg-purple-950/25 p-3 space-y-1"
-                  >
-                    <div className="font-semibold text-purple-200">
-                      #{selectedCustomers.length + i + 1} {stop.label}{" "}
-                      <span className="text-slate-500 text-xs font-normal">
-                        (extra)
-                      </span>
+                      <div className="flex items-center gap-2 font-semibold text-purple-200">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-900 text-sm font-bold text-amber-300 ring-1 ring-amber-600/50">
+                          {row.letter}
+                        </span>
+                        <span>
+                          {row.stop.label}{" "}
+                          <span className="text-slate-500 text-xs font-normal">
+                            (extra)
+                          </span>
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-300">{row.stop.address}</p>
+                      <button
+                        type="button"
+                        onClick={() => removeManualStop(row.stop.id)}
+                        className="w-full mt-2 text-sm font-medium rounded border border-red-800/60 bg-red-950/40 text-red-200 hover:bg-red-950/70 px-3 py-2 transition-colors"
+                      >
+                        Remove extra stop
+                      </button>
                     </div>
-                    <p className="text-sm text-slate-300">{stop.address}</p>
-                    <button
-                      type="button"
-                      onClick={() => removeManualStop(stop.id)}
-                      className="w-full mt-2 text-sm font-medium rounded border border-red-800/60 bg-red-950/40 text-red-200 hover:bg-red-950/70 px-3 py-2 transition-colors"
-                    >
-                      Remove extra stop
-                    </button>
-                  </div>
-                ))}
+                  )
+                )}
               </div>
 
               <div className="hidden md:block w-full max-w-full min-w-0 overflow-x-auto">
@@ -513,7 +617,7 @@ export default function RoutesPage() {
                 <thead>
                   <tr className="bg-slate-700">
                     <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
-                      Stop #
+                      Stop
                     </th>
                     <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
                       Display Name
@@ -542,93 +646,96 @@ export default function RoutesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedCustomers.map((customer, index) => (
-                    <tr
-                      key={customer.id}
-                      className="bg-slate-800 hover:bg-slate-750"
-                    >
-                      <td className="border border-slate-600 px-4 py-2 text-slate-300 font-semibold">
-                        {index + 1}
-                      </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-300">
-                        {customer.displayName}
-                      </td>
-                      <td className="border border-slate-600 px-3 py-2 text-slate-300 text-sm">
-                        <PhoneContactLinks
-                          mobileNumber={customer.mobileNumber}
-                          homeNumber={customer.homeNumber}
-                          compact
-                        />
-                      </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-300">
-                        {customer.city}
-                      </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-300 text-sm">
-                        {customer.fullAddress}
-                      </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-300">
-                        {customer.serviceFrequency}
-                      </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-300">
-                        {formatDate(customer.nextServiceDate)}
-                      </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-300 text-sm">
-                        {customer.notes || customer.addressNotes || "—"}
-                      </td>
-                      <td className="border border-slate-600 px-2 py-2">
-                        <button
-                          type="button"
-                          onClick={() => removeCustomerFromRoute(customer.id)}
-                          className="text-xs font-medium rounded border border-red-800/60 bg-red-950/40 text-red-200 hover:bg-red-950/70 px-2 py-1.5 transition-colors whitespace-nowrap"
-                          title="Remove from route (e.g. customer declined)"
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {manualStops.map((stop, i) => (
-                    <tr
-                      key={stop.id}
-                      className="bg-purple-950/30 hover:bg-purple-950/40"
-                    >
-                      <td className="border border-slate-600 px-4 py-2 text-slate-300 font-semibold">
-                        {selectedCustomers.length + i + 1}
-                      </td>
-                      <td className="border border-slate-600 px-4 py-2 text-purple-200">
-                        {stop.label}{" "}
-                        <span className="text-slate-500 text-xs">(extra)</span>
-                      </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-500">
-                        —
-                      </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-500">
-                        —
-                      </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-300 text-sm">
-                        {stop.address}
-                      </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-500">
-                        —
-                      </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-500">
-                        —
-                      </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-500 text-sm">
-                        Map lookup
-                      </td>
-                      <td className="border border-slate-600 px-2 py-2">
-                        <button
-                          type="button"
-                          onClick={() => removeManualStop(stop.id)}
-                          className="text-xs font-medium rounded border border-red-800/60 bg-red-950/40 text-red-200 hover:bg-red-950/70 px-2 py-1.5 transition-colors whitespace-nowrap"
-                          title="Remove this extra stop from the route"
-                        >
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {visitStopsInOrder.map((row) =>
+                    row.kind === "customer" ? (
+                      <tr
+                        key={`customer:${row.customer.id}`}
+                        className="bg-slate-800 hover:bg-slate-750"
+                      >
+                        <td className="border border-slate-600 px-4 py-2 text-slate-300 font-bold text-amber-300 tabular-nums">
+                          {row.letter}
+                        </td>
+                        <td className="border border-slate-600 px-4 py-2 text-slate-300">
+                          {row.customer.displayName}
+                        </td>
+                        <td className="border border-slate-600 px-3 py-2 text-slate-300 text-sm">
+                          <PhoneContactLinks
+                            mobileNumber={row.customer.mobileNumber}
+                            homeNumber={row.customer.homeNumber}
+                            compact
+                          />
+                        </td>
+                        <td className="border border-slate-600 px-4 py-2 text-slate-300">
+                          {row.customer.city}
+                        </td>
+                        <td className="border border-slate-600 px-4 py-2 text-slate-300 text-sm">
+                          {row.customer.fullAddress}
+                        </td>
+                        <td className="border border-slate-600 px-4 py-2 text-slate-300">
+                          {row.customer.serviceFrequency}
+                        </td>
+                        <td className="border border-slate-600 px-4 py-2 text-slate-300">
+                          {formatDate(row.customer.nextServiceDate)}
+                        </td>
+                        <td className="border border-slate-600 px-4 py-2 text-slate-300 text-sm">
+                          {row.customer.notes || row.customer.addressNotes || "—"}
+                        </td>
+                        <td className="border border-slate-600 px-2 py-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeCustomerFromRoute(row.customer.id)
+                            }
+                            className="text-xs font-medium rounded border border-red-800/60 bg-red-950/40 text-red-200 hover:bg-red-950/70 px-2 py-1.5 transition-colors whitespace-nowrap"
+                            title="Remove from route (e.g. customer declined)"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr
+                        key={`manual:${row.stop.id}`}
+                        className="bg-purple-950/30 hover:bg-purple-950/40"
+                      >
+                        <td className="border border-slate-600 px-4 py-2 text-slate-300 font-bold text-amber-300 tabular-nums">
+                          {row.letter}
+                        </td>
+                        <td className="border border-slate-600 px-4 py-2 text-purple-200">
+                          {row.stop.label}{" "}
+                          <span className="text-slate-500 text-xs">(extra)</span>
+                        </td>
+                        <td className="border border-slate-600 px-4 py-2 text-slate-500">
+                          —
+                        </td>
+                        <td className="border border-slate-600 px-4 py-2 text-slate-500">
+                          —
+                        </td>
+                        <td className="border border-slate-600 px-4 py-2 text-slate-300 text-sm">
+                          {row.stop.address}
+                        </td>
+                        <td className="border border-slate-600 px-4 py-2 text-slate-500">
+                          —
+                        </td>
+                        <td className="border border-slate-600 px-4 py-2 text-slate-500">
+                          —
+                        </td>
+                        <td className="border border-slate-600 px-4 py-2 text-slate-500 text-sm">
+                          Map lookup
+                        </td>
+                        <td className="border border-slate-600 px-2 py-2">
+                          <button
+                            type="button"
+                            onClick={() => removeManualStop(row.stop.id)}
+                            className="text-xs font-medium rounded border border-red-800/60 bg-red-950/40 text-red-200 hover:bg-red-950/70 px-2 py-1.5 transition-colors whitespace-nowrap"
+                            title="Remove this extra stop from the route"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  )}
                 </tbody>
               </table>
               </div>
@@ -744,16 +851,21 @@ export default function RoutesPage() {
               </div>
             ) : (
               <div className="max-h-[600px] overflow-y-auto space-y-4">
-                {generatedMessages.map((item, index) => (
+                {generatedMessages.map((item) => (
                   <div
                     key={item.customer.id}
                     className="bg-slate-700 rounded p-4 border border-slate-600"
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-2">
                       <div className="min-w-0 space-y-1">
-                        <div className="font-semibold text-slate-100">
-                          #{index + 1} – {item.customer.displayName} (
-                          {item.customer.city}, {item.customer.state})
+                        <div className="font-semibold text-slate-100 flex flex-wrap items-center gap-2">
+                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-slate-900 text-sm font-bold text-amber-300 ring-1 ring-amber-600/50">
+                            {item.letter}
+                          </span>
+                          <span>
+                            {item.customer.displayName} (
+                            {item.customer.city}, {item.customer.state})
+                          </span>
                         </div>
                         <p className="text-sm text-slate-400 break-words">
                           {item.customer.fullAddress}
