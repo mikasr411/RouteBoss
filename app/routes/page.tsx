@@ -10,6 +10,8 @@ import {
   applyTemplate,
 } from "@/lib/message-template";
 import PhoneContactLinks from "@/components/PhoneContactLinks";
+import { useRouteHistoryStore } from "@/store/route-history-store";
+import type { SavedRoute } from "@/types/saved-route";
 
 export default function RoutesPage() {
   const {
@@ -18,7 +20,9 @@ export default function RoutesPage() {
     manualStops,
     clearManualStops,
     removeManualStop,
+    setManualStops,
   } = useCustomerStore();
+  const { savedRoutes, saveRoute, removeSavedRoute } = useRouteHistoryStore();
   const [routeName, setRouteName] = useState(
     `Route ${format(new Date(), "MMM d, yyyy")}`
   );
@@ -29,6 +33,7 @@ export default function RoutesPage() {
   // Load template from localStorage or use default
   const [template, setTemplate] = useState<string>(DEFAULT_TEMPLATE);
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
+  const [historyNotice, setHistoryNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("routeboss:messageTemplate");
@@ -66,17 +71,44 @@ export default function RoutesPage() {
 
     // Create CSV with Name and ADDRESS columns (customers + extra stops)
     const header = "Name,ADDRESS\n";
-    const customerRows = selectedCustomers.map((customer) => {
+    const snap = useCustomerStore.getState();
+    const startRows = snap.routeStart
+      ? [
+          `"${snap.routeStart.label.replace(/"/g, '""')}","${snap.routeStart.address.replace(/"/g, '""')}"`,
+        ]
+      : [];
+
+    const rowForCustomer = (customer: (typeof selectedCustomers)[0]) => {
       const name = customer.displayName.replace(/"/g, '""');
       const address = customer.fullAddress.replace(/"/g, '""');
       return `"${name}","${address}"`;
-    });
-    const manualRows = manualStops.map((stop) => {
+    };
+    const rowForManual = (stop: (typeof manualStops)[0]) => {
       const name = stop.label.replace(/"/g, '""');
       const address = stop.address.replace(/"/g, '""');
       return `"${name}","${address}"`;
-    });
-    const rows = [...customerRows, ...manualRows];
+    };
+
+    let bodyRows: string[];
+    if (snap.routeStopOrder.length > 0) {
+      bodyRows = [];
+      for (const key of snap.routeStopOrder) {
+        if (key.kind === "customer") {
+          const c = selectedCustomers.find((x) => x.id === key.id);
+          if (c) bodyRows.push(rowForCustomer(c));
+        } else {
+          const s = manualStops.find((x) => x.id === key.id);
+          if (s) bodyRows.push(rowForManual(s));
+        }
+      }
+    } else {
+      bodyRows = [
+        ...selectedCustomers.map(rowForCustomer),
+        ...manualStops.map(rowForManual),
+      ];
+    }
+
+    const rows = [...startRows, ...bodyRows];
 
     const csvContent = header + rows.join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -109,6 +141,91 @@ export default function RoutesPage() {
   /** Same flag as Map checkboxes — Map and Routes stay in sync via the store. */
   const removeCustomerFromRoute = (customerId: string) => {
     updateCustomer(customerId, { isSelectedForRoute: false });
+  };
+
+  const handleSaveRouteToHistory = () => {
+    if (totalRouteStops === 0) return;
+    const snap = useCustomerStore.getState();
+    saveRoute({
+      name: routeName,
+      routeDate,
+      customerIds: selectedCustomers.map((c) => c.id),
+      manualStops,
+      routeStopOrder: snap.routeStopOrder,
+      routeStart: snap.routeStart,
+    });
+    setHistoryNotice("Route saved to history.");
+    window.setTimeout(() => setHistoryNotice(null), 3500);
+  };
+
+  const applySavedRoute = (route: SavedRoute) => {
+    const state = useCustomerStore.getState();
+    const {
+      customers: all,
+      updateCustomer: patch,
+      setManualStops: setManual,
+      setRouteStopOrder,
+      setRouteStart,
+      clearRouteStart,
+    } = state;
+    const hasCurrent =
+      all.some((c) => c.isSelectedForRoute) || state.manualStops.length > 0;
+    if (
+      hasCurrent &&
+      !confirm(
+        "Replace your current route with this saved one? Your current selections and extra stops will be cleared first."
+      )
+    ) {
+      return;
+    }
+    all.forEach((c) => {
+      if (c.isSelectedForRoute) patch(c.id, { isSelectedForRoute: false });
+    });
+    route.customerIds.forEach((id) => {
+      if (all.some((c) => c.id === id)) {
+        patch(id, { isSelectedForRoute: true });
+      }
+    });
+    setManual(route.manualStops.map((s) => ({ ...s })));
+
+    const customerIdSet = new Set(route.customerIds);
+    const manualIdSet = new Set(route.manualStops.map((s) => s.id));
+    let order =
+      route.routeStopOrder?.filter((k) =>
+        k.kind === "customer"
+          ? customerIdSet.has(k.id)
+          : manualIdSet.has(k.id)
+      ) ?? [];
+    const inOrder = new Set(order.map((k) => `${k.kind}:${k.id}`));
+    for (const id of route.customerIds) {
+      if (all.some((c) => c.id === id) && !inOrder.has(`customer:${id}`)) {
+        order.push({ kind: "customer", id });
+        inOrder.add(`customer:${id}`);
+      }
+    }
+    for (const s of route.manualStops) {
+      if (!inOrder.has(`manual:${s.id}`)) {
+        order.push({ kind: "manual", id: s.id });
+        inOrder.add(`manual:${s.id}`);
+      }
+    }
+    setRouteStopOrder(order);
+
+    if (route.routeStart !== undefined) {
+      if (route.routeStart) setRouteStart({ ...route.routeStart });
+      else clearRouteStart();
+    }
+
+    setRouteName(route.name);
+    setRouteDate(route.routeDate);
+    setHistoryNotice(`Loaded “${route.name}”.`);
+    window.setTimeout(() => setHistoryNotice(null), 3500);
+  };
+
+  const handleDeleteSavedRoute = (id: string, label: string) => {
+    if (confirm(`Remove “${label}” from saved history?`)) {
+      removeSavedRoute(id);
+    }
   };
 
   // Generate messages for selected customers
@@ -175,6 +292,85 @@ export default function RoutesPage() {
               className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+        </div>
+
+        {/* Save & route history */}
+        <div className="bg-slate-700/90 rounded-lg border border-slate-600 p-4 mb-6">
+          <h2 className="text-lg font-semibold text-slate-100 mb-2">
+            Save & route history
+          </h2>
+          <p className="text-xs text-slate-400 mb-3">
+            Save a snapshot of the stops below (customers + extra stops). Load a
+            saved route anytime to restore those selections on the Map and here.
+            Customers who were deleted since saving are skipped.
+          </p>
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:items-center mb-4">
+            <button
+              type="button"
+              onClick={handleSaveRouteToHistory}
+              disabled={totalRouteStops === 0}
+              className="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded font-semibold text-sm transition-colors w-full sm:w-auto"
+            >
+              Save current route to history
+            </button>
+            {historyNotice && (
+              <span className="text-sm text-green-400">{historyNotice}</span>
+            )}
+          </div>
+          {savedRoutes.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              No saved routes yet. Build a route and click save.
+            </p>
+          ) : (
+            <ul className="space-y-2 max-h-[min(50vh,320px)] overflow-y-auto pr-1">
+              {savedRoutes.map((r) => {
+                const n = r.customerIds.length + r.manualStops.length;
+                const missing =
+                  r.customerIds.filter((id) => !customers.some((c) => c.id === id))
+                    .length;
+                return (
+                  <li
+                    key={r.id}
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded border border-slate-600 bg-slate-800/80 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-medium text-slate-100 truncate">
+                        {r.name}
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">
+                        Route date {r.routeDate} · Saved{" "}
+                        {format(new Date(r.savedAt), "MMM d, yyyy h:mm a")} ·{" "}
+                        {n} stop{n !== 1 ? "s" : ""}
+                        {missing > 0 ? (
+                          <span className="text-amber-400/90">
+                            {" "}
+                            ({missing} contact{missing !== 1 ? "s" : ""} no longer
+                            in list)
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => applySavedRoute(r)}
+                        className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors"
+                      >
+                        Use this route
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSavedRoute(r.id, r.name)}
+                        className="border border-slate-500 text-slate-300 hover:bg-slate-700 px-3 py-1.5 rounded text-sm transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
 
         {/* Summary */}

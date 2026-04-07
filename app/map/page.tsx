@@ -12,7 +12,6 @@ import {
   InfoWindow,
   DirectionsRenderer,
 } from "@react-google-maps/api";
-import { parse } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 import { ManualRouteStop } from "@/types/manual-stop";
 
@@ -74,6 +73,7 @@ const createMarkerIcon = (color: string): any => {
 };
 
 const PREVIEW_MARKER_ID = "__address_preview__";
+const START_MARKER_ID = "__route_start__";
 
 export default function MapPage() {
   const {
@@ -82,6 +82,12 @@ export default function MapPage() {
     manualStops,
     addManualStop,
     removeManualStop,
+    routeStopOrder,
+    routeStart,
+    syncRouteStopOrder,
+    moveRouteStopInOrder,
+    setRouteStart,
+    clearRouteStart,
   } = useCustomerStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCity, setSelectedCity] = useState<string>("all");
@@ -111,6 +117,12 @@ export default function MapPage() {
     lng: number;
     address: string;
   } | null>(null);
+
+  /** Starting point (depot / home base) */
+  const [startAddressInput, setStartAddressInput] = useState("");
+  const [startLabelInput, setStartLabelInput] = useState("Starting point");
+  const [startLookupLoading, setStartLookupLoading] = useState(false);
+  const [startLookupError, setStartLookupError] = useState<string | null>(null);
 
   // Get unique cities
   const cities = useMemo(() => {
@@ -172,15 +184,29 @@ export default function MapPage() {
     return customersWithCoords.filter((c) => c.isSelectedForRoute);
   }, [customersWithCoords]);
 
-  // All lat/lng points for driving directions: selected customers, then manual stops
-  const allRoutePoints = useMemo(() => {
-    const fromCustomers = selectedForRoute.map((c) => ({
-      lat: c.latitude!,
-      lng: c.longitude!,
-    }));
-    const fromManual = manualStops.map((s) => ({ lat: s.lat, lng: s.lng }));
-    return [...fromCustomers, ...fromManual];
-  }, [selectedForRoute, manualStops]);
+  useEffect(() => {
+    syncRouteStopOrder();
+  }, [customers, manualStops, syncRouteStopOrder]);
+
+  // Driving path: optional start, then ordered stops (respects drag / ↑↓ on Map)
+  const orderedRoutePoints = useMemo(() => {
+    const pts: { lat: number; lng: number }[] = [];
+    if (routeStart) {
+      pts.push({ lat: routeStart.lat, lng: routeStart.lng });
+    }
+    for (const key of routeStopOrder) {
+      if (key.kind === "customer") {
+        const c = customers.find((x) => x.id === key.id);
+        if (c && hasCoordinates(c)) {
+          pts.push({ lat: c.latitude!, lng: c.longitude! });
+        }
+      } else {
+        const s = manualStops.find((x) => x.id === key.id);
+        if (s) pts.push({ lat: s.lat, lng: s.lng });
+      }
+    }
+    return pts;
+  }, [routeStopOrder, customers, manualStops, routeStart]);
 
   // Geocode statistics
   const geocodeStats = useMemo(() => {
@@ -236,9 +262,9 @@ export default function MapPage() {
     alert(`Geocoding complete! ${missing.length} addresses processed.`);
   }, [customers, updateCustomer]);
 
-  // Calculate route with Directions API (customers + manual stops)
+  // Calculate route with Directions API (start + ordered stops; order is fixed, not optimized)
   const calculateRoute = useCallback(() => {
-    if (allRoutePoints.length < 2) {
+    if (orderedRoutePoints.length < 2) {
       setDirectionsResult(null);
       setDirectionsError(null);
       return;
@@ -265,9 +291,9 @@ export default function MapPage() {
       }
     }
 
-    const first = allRoutePoints[0];
-    const last = allRoutePoints[allRoutePoints.length - 1];
-    const waypoints = allRoutePoints.slice(1, -1).map((p) => ({
+    const first = orderedRoutePoints[0];
+    const last = orderedRoutePoints[orderedRoutePoints.length - 1];
+    const waypoints = orderedRoutePoints.slice(1, -1).map((p) => ({
       location: { lat: p.lat, lng: p.lng },
       stopover: true,
     }));
@@ -276,7 +302,7 @@ export default function MapPage() {
       origin: { lat: first.lat, lng: first.lng },
       destination: { lat: last.lat, lng: last.lng },
       waypoints: waypoints.length > 0 ? waypoints : undefined,
-      optimizeWaypoints: true,
+      optimizeWaypoints: false,
       travelMode: google.maps.TravelMode.DRIVING,
     };
 
@@ -291,11 +317,11 @@ export default function MapPage() {
         setDirectionsResult(null);
       }
     });
-  }, [allRoutePoints]);
+  }, [orderedRoutePoints]);
 
   // Recalculate route when selection changes (only after map is loaded)
   useEffect(() => {
-    if (allRoutePoints.length >= 2 && mapRef.current) {
+    if (orderedRoutePoints.length >= 2 && mapRef.current) {
       const timer = setTimeout(() => {
         calculateRoute();
       }, 100);
@@ -304,7 +330,7 @@ export default function MapPage() {
       setDirectionsResult(null);
       setDirectionsError(null);
     }
-  }, [allRoutePoints.length, calculateRoute]);
+  }, [orderedRoutePoints.length, calculateRoute]);
 
   // Pan to customer
   const panToCustomer = useCallback(
@@ -375,6 +401,58 @@ export default function MapPage() {
     setAddressLookupInput("");
     setSelectedMarkerId(null);
   }, [addressPreview, addressLookupLabel, addManualStop]);
+
+  const handleLocateAndSaveStart = useCallback(async () => {
+    const q = startAddressInput.trim();
+    if (!q) {
+      setStartLookupError("Enter a starting address");
+      return;
+    }
+    setStartLookupLoading(true);
+    setStartLookupError(null);
+    try {
+      const coords = await geocodeAddress(q);
+      if (!coords) {
+        setStartLookupError("Could not find that address. Try a fuller address.");
+        return;
+      }
+      setRouteStart({
+        id: uuidv4(),
+        address: q,
+        label: startLabelInput.trim() || "Starting point",
+        lat: coords.lat,
+        lng: coords.lng,
+      });
+      setSelectedMarkerId(START_MARKER_ID);
+      if (mapRef.current) {
+        mapRef.current.panTo({ lat: coords.lat, lng: coords.lng });
+        mapRef.current.setZoom(12);
+      }
+    } finally {
+      setStartLookupLoading(false);
+    }
+  }, [startAddressInput, startLabelInput, setRouteStart]);
+
+  const removeStopFromRoute = useCallback(
+    (kind: "customer" | "manual", id: string) => {
+      if (kind === "customer") {
+        updateCustomer(id, { isSelectedForRoute: false });
+      } else {
+        removeManualStop(id);
+      }
+    },
+    [updateCustomer, removeManualStop]
+  );
+
+  const stopLabel = useCallback(
+    (kind: "customer" | "manual", id: string) => {
+      if (kind === "customer") {
+        return customers.find((c) => c.id === id)?.displayName ?? "Customer";
+      }
+      return manualStops.find((s) => s.id === id)?.label ?? "Extra stop";
+    },
+    [customers, manualStops]
+  );
 
   // Google Maps often needs a resize after the container gets a real size (mobile layout).
   useEffect(() => {
@@ -492,39 +570,6 @@ export default function MapPage() {
               )}
             </div>
 
-            {/* Manual stops on route */}
-            {manualStops.length > 0 && (
-              <div className="p-3 sm:p-4 border-b border-slate-700 order-3 md:order-none shrink-0">
-                <div className="text-xs font-semibold text-slate-200 uppercase tracking-wide mb-2">
-                  Extra stops ({manualStops.length})
-                </div>
-                <ul className="space-y-2 max-h-32 overflow-y-auto">
-                  {manualStops.map((s) => (
-                    <li
-                      key={s.id}
-                      className="flex items-start justify-between gap-2 text-xs bg-slate-700/80 rounded px-2 py-1.5"
-                    >
-                      <span className="text-slate-200 truncate flex-1">
-                        <span className="text-purple-300 font-medium">
-                          {s.label}
-                        </span>
-                        <span className="text-slate-400 block truncate">
-                          {s.address}
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeManualStop(s.id)}
-                        className="shrink-0 text-red-400 hover:text-red-300"
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
             {/* Summary */}
             <div className="p-3 sm:p-4 border-b border-slate-700 order-4 md:order-none shrink-0">
               <div className="text-sm text-slate-300">
@@ -541,8 +586,130 @@ export default function MapPage() {
               )}
             </div>
 
+            {/* Starting point + ordered stops on route */}
+            <div className="p-3 sm:p-4 border-b border-slate-700 order-5 md:order-none shrink-0 space-y-3">
+              <div className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
+                Starting point
+              </div>
+              <p className="text-xs text-slate-500">
+                Optional depot or home base. Driving directions go: start → stops
+                in the order listed below.
+              </p>
+              <input
+                type="text"
+                value={startLabelInput}
+                onChange={(e) => setStartLabelInput(e.target.value)}
+                placeholder="Label (e.g. Shop)"
+                className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-600"
+              />
+              <input
+                type="text"
+                value={startAddressInput}
+                onChange={(e) => setStartAddressInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleLocateAndSaveStart();
+                }}
+                placeholder="123 Main St, City, ST"
+                className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-600"
+              />
+              <button
+                type="button"
+                onClick={handleLocateAndSaveStart}
+                disabled={startLookupLoading}
+                className="w-full bg-cyan-700 hover:bg-cyan-600 disabled:bg-slate-600 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {startLookupLoading ? "Locating…" : "Locate & save starting point"}
+              </button>
+              {startLookupError && (
+                <p className="text-xs text-red-400">{startLookupError}</p>
+              )}
+              {routeStart && (
+                <div className="rounded border border-cyan-600/40 bg-cyan-950/25 p-2 space-y-2">
+                  <div>
+                    <div className="text-sm font-medium text-cyan-200">
+                      {routeStart.label}
+                    </div>
+                    <div className="text-xs text-slate-400 line-clamp-2">
+                      {routeStart.address}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearRouteStart();
+                      setSelectedMarkerId(null);
+                    }}
+                    className="w-full text-xs border border-slate-500 text-slate-300 hover:bg-slate-700 py-1.5 rounded"
+                  >
+                    Clear starting point
+                  </button>
+                </div>
+              )}
+
+              <div className="text-xs font-semibold text-slate-200 uppercase tracking-wide pt-2 border-t border-slate-600">
+                On this route ({routeStopOrder.length})
+              </div>
+              <p className="text-xs text-slate-500">
+                Use ↑ ↓ to set visit order. Remove takes them off the route
+                (same as Map checkboxes).
+              </p>
+              {routeStopOrder.length === 0 ? (
+                <p className="text-xs text-slate-500 italic">
+                  No stops yet — select customers in the list below or add an
+                  address above.
+                </p>
+              ) : (
+                <ul className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
+                  {routeStopOrder.map((key, index) => (
+                    <li
+                      key={`${key.kind}:${key.id}`}
+                      className="flex items-center gap-1.5 bg-slate-700/70 rounded px-2 py-1.5 text-xs"
+                    >
+                      <span className="text-slate-500 w-5 shrink-0 tabular-nums">
+                        {index + 1}.
+                      </span>
+                      <span className="flex-1 min-w-0 truncate text-slate-100">
+                        {stopLabel(key.kind, key.id)}
+                        {key.kind === "manual" ? (
+                          <span className="text-purple-300 ml-1">(extra)</span>
+                        ) : null}
+                      </span>
+                      <div className="flex shrink-0 gap-0.5">
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          onClick={() => moveRouteStopInOrder(index, -1)}
+                          className="px-1.5 py-0.5 rounded bg-slate-600 text-slate-100 hover:bg-slate-500 disabled:opacity-25 disabled:cursor-not-allowed text-xs font-semibold"
+                          aria-label="Move up"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === routeStopOrder.length - 1}
+                          onClick={() => moveRouteStopInOrder(index, 1)}
+                          className="px-1.5 py-0.5 rounded bg-slate-600 text-slate-100 hover:bg-slate-500 disabled:opacity-25 disabled:cursor-not-allowed text-xs font-semibold"
+                          aria-label="Move down"
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeStopFromRoute(key.kind, key.id)}
+                          className="px-1.5 py-0.5 rounded bg-red-900/50 text-red-200 hover:bg-red-900/80 text-xs"
+                          aria-label="Remove from route"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             {/* Filters */}
-            <div className="p-3 sm:p-4 border-b border-slate-700 space-y-3 order-5 md:order-none shrink-0">
+            <div className="p-3 sm:p-4 border-b border-slate-700 space-y-3 order-6 md:order-none shrink-0">
               <div>
                 <label className="block text-xs text-slate-300 mb-1">
                   Search by name
@@ -602,7 +769,7 @@ export default function MapPage() {
             </div>
 
             {/* Customer list: on mobile, whole panel scrolls; on md+, only this section scrolls */}
-            <div className="flex-none md:flex-1 md:min-h-0 md:overflow-y-auto order-6 md:order-none">
+            <div className="flex-none md:flex-1 md:min-h-0 md:overflow-y-auto order-7 md:order-none">
               {customersWithCoords.length === 0 ? (
                 <div className="p-4 text-center text-slate-400 text-sm">
                   No customers with coordinates match filters.
@@ -664,7 +831,7 @@ export default function MapPage() {
                 mapRef.current = map;
                 setIsMapLoaded(true);
                 // Recalculate route after map loads if we have selected customers
-                if (allRoutePoints.length >= 2) {
+                if (orderedRoutePoints.length >= 2) {
                   setTimeout(() => {
                     calculateRoute();
                   }, 500);
@@ -823,6 +990,44 @@ export default function MapPage() {
                   </Marker>
                 );
               })}
+
+              {/* Starting point marker */}
+              {routeStart && (
+                <Marker
+                  key={routeStart.id}
+                  position={{ lat: routeStart.lat, lng: routeStart.lng }}
+                  icon={createMarkerIcon("#06b6d4")}
+                  onClick={() => setSelectedMarkerId(START_MARKER_ID)}
+                  title={routeStart.label}
+                >
+                  {selectedMarkerId === START_MARKER_ID && (
+                    <InfoWindow
+                      onCloseClick={() => setSelectedMarkerId(null)}
+                      position={{
+                        lat: routeStart.lat,
+                        lng: routeStart.lng,
+                      }}
+                    >
+                      <div className="text-slate-900 max-w-[220px]">
+                        <div className="font-semibold text-cyan-800 mb-1">
+                          {routeStart.label}
+                        </div>
+                        <div className="text-xs mb-2">{routeStart.address}</div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearRouteStart();
+                            setSelectedMarkerId(null);
+                          }}
+                          className="text-xs bg-slate-700 text-white px-2 py-1 rounded w-full"
+                        >
+                          Clear starting point
+                        </button>
+                      </div>
+                    </InfoWindow>
+                  )}
+                </Marker>
+              )}
 
               {/* Manual / extra route stops */}
               {manualStops.map((stop) => {
