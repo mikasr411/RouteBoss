@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import {
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+  useEffect,
+  Fragment,
+} from "react";
 import { useCustomerStore } from "@/store/customer-store";
 import { Customer } from "@/types/customer";
 import { formatDate, isCustomerDue } from "@/lib/utils";
@@ -11,6 +18,7 @@ import {
   Marker,
   InfoWindow,
   DirectionsRenderer,
+  OverlayView,
 } from "@react-google-maps/api";
 import { v4 as uuidv4 } from "uuid";
 import { ManualRouteStop } from "@/types/manual-stop";
@@ -95,6 +103,39 @@ const routeMarkerLabelStyle: {
   fontSize: "12px",
   fontWeight: "bold",
 };
+
+/** Small nameplate under a pin (pointer-events none so marker stays clickable) */
+function MapNameplate({
+  position,
+  line1,
+  line2,
+}: {
+  position: { lat: number; lng: number };
+  line1?: string;
+  line2: string;
+}) {
+  return (
+    <OverlayView
+      position={position}
+      mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+      getPixelPositionOffset={(width) => ({
+        x: -(width / 2),
+        y: 16,
+      })}
+    >
+      <div className="pointer-events-none z-[1] flex max-w-[min(11rem,calc(100vw-2rem))] flex-col items-center gap-0.5 rounded-md border border-slate-500/90 bg-slate-950/95 px-2 py-1 shadow-lg ring-1 ring-black/40">
+        {line1 ? (
+          <span className="text-[10px] font-bold leading-none text-amber-300">
+            {line1}
+          </span>
+        ) : null}
+        <span className="max-w-full text-center text-[10px] font-semibold leading-tight text-slate-50 sm:text-xs">
+          {line2}
+        </span>
+      </div>
+    </OverlayView>
+  );
+}
 
 export default function MapPage() {
   const {
@@ -1016,172 +1057,180 @@ export default function MapPage() {
                 ],
               }}
             >
-              {/* Markers */}
+              {/* Markers + nameplates */}
               {customersWithCoords.map((customer) => {
                 const color = getMarkerColor(customer);
-                // Always create icon fresh to ensure it updates
                 const icon = createMarkerIcon(color);
                 const letter = routeStopLetterByKey.get(`customer:${customer.id}`);
+                const pos = {
+                  lat: customer.latitude!,
+                  lng: customer.longitude!,
+                };
                 return (
-                  <Marker
-                    key={`${customer.id}-${customer.isSelectedForRoute ? 'selected' : 'unselected'}-${color}-${letter ?? "x"}`}
-                    position={{
-                      lat: customer.latitude!,
-                      lng: customer.longitude!,
-                    }}
-                    icon={icon}
-                    label={
-                      letter
-                        ? { text: letter, ...routeMarkerLabelStyle }
-                        : undefined
-                    }
-                    onClick={() => setSelectedMarkerId(customer.id)}
+                  <Fragment
+                    key={`${customer.id}-${customer.isSelectedForRoute ? "sel" : "un"}-${color}-${letter ?? "x"}`}
                   >
-                    {selectedMarkerId === customer.id && (
+                    <Marker
+                      position={pos}
+                      icon={icon}
+                      onClick={() => setSelectedMarkerId(customer.id)}
+                    >
+                      {selectedMarkerId === customer.id && (
+                        <InfoWindow
+                          onCloseClick={() => setSelectedMarkerId(null)}
+                          position={pos}
+                        >
+                          <div className="text-slate-900">
+                            {letter ? (
+                              <div className="text-xs font-bold text-amber-800 mb-1">
+                                Route stop {letter}
+                              </div>
+                            ) : null}
+                            <div className="font-semibold mb-2">
+                              {customer.displayName}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                toggleRouteSelection(customer.id);
+                                setSelectedMarkerId(null);
+                              }}
+                              className={`text-xs px-3 py-1.5 rounded w-full sm:w-auto mb-3 ${
+                                customer.isSelectedForRoute
+                                  ? "bg-red-600 text-white"
+                                  : "bg-blue-600 text-white"
+                              }`}
+                            >
+                              {customer.isSelectedForRoute
+                                ? "Remove from Route"
+                                : "Add to Route"}
+                            </button>
+                            <div className="text-sm mb-1">
+                              {customer.city}, {customer.state}
+                            </div>
+                            <div className="text-sm mb-1">
+                              Last: {formatDate(customer.lastServiceDate)}
+                            </div>
+                            <div className="text-sm mb-1">
+                              Next: {formatDate(customer.nextServiceDate)}
+                            </div>
+                            <div className="text-sm">
+                              {customer.serviceFrequency}
+                            </div>
+                          </div>
+                        </InfoWindow>
+                      )}
+                    </Marker>
+                    <MapNameplate
+                      position={pos}
+                      line1={letter}
+                      line2={customer.displayName}
+                    />
+                  </Fragment>
+                );
+              })}
+
+              {/* Starting point marker + nameplate */}
+              {routeStart && (
+                <Fragment key={routeStart.id}>
+                  <Marker
+                    position={{ lat: routeStart.lat, lng: routeStart.lng }}
+                    icon={createMarkerIcon("#06b6d4")}
+                    label={{ text: "S", ...routeMarkerLabelStyle }}
+                    onClick={() => setSelectedMarkerId(START_MARKER_ID)}
+                    title={routeStart.label}
+                  >
+                    {selectedMarkerId === START_MARKER_ID && (
                       <InfoWindow
                         onCloseClick={() => setSelectedMarkerId(null)}
                         position={{
-                          lat: customer.latitude!,
-                          lng: customer.longitude!,
+                          lat: routeStart.lat,
+                          lng: routeStart.lng,
                         }}
                       >
-                        <div className="text-slate-900">
-                          {letter ? (
-                            <div className="text-xs font-bold text-amber-800 mb-1">
-                              Route stop {letter}
-                            </div>
-                          ) : null}
-                          <div className="font-semibold mb-2">
-                            {customer.displayName}
+                        <div className="text-slate-900 max-w-[220px]">
+                          <div className="text-xs font-bold text-cyan-800 mb-1">
+                            Map pin: S — starting point
                           </div>
+                          <div className="font-semibold text-cyan-800 mb-1">
+                            {routeStart.label}
+                          </div>
+                          <div className="text-xs mb-2">{routeStart.address}</div>
                           <button
                             type="button"
                             onClick={() => {
-                              toggleRouteSelection(customer.id);
+                              clearRouteStart();
                               setSelectedMarkerId(null);
                             }}
-                            className={`text-xs px-3 py-1.5 rounded w-full sm:w-auto mb-3 ${
-                              customer.isSelectedForRoute
-                                ? "bg-red-600 text-white"
-                                : "bg-blue-600 text-white"
-                            }`}
+                            className="text-xs bg-slate-700 text-white px-2 py-1 rounded w-full"
                           >
-                            {customer.isSelectedForRoute
-                              ? "Remove from Route"
-                              : "Add to Route"}
+                            Clear starting point
                           </button>
-                          <div className="text-sm mb-1">
-                            {customer.city}, {customer.state}
-                          </div>
-                          <div className="text-sm mb-1">
-                            Last: {formatDate(customer.lastServiceDate)}
-                          </div>
-                          <div className="text-sm mb-1">
-                            Next: {formatDate(customer.nextServiceDate)}
-                          </div>
-                          <div className="text-sm">
-                            {customer.serviceFrequency}
-                          </div>
                         </div>
                       </InfoWindow>
                     )}
                   </Marker>
-                );
-              })}
-
-              {/* Starting point marker */}
-              {routeStart && (
-                <Marker
-                  key={routeStart.id}
-                  position={{ lat: routeStart.lat, lng: routeStart.lng }}
-                  icon={createMarkerIcon("#06b6d4")}
-                  label={{ text: "S", ...routeMarkerLabelStyle }}
-                  onClick={() => setSelectedMarkerId(START_MARKER_ID)}
-                  title={routeStart.label}
-                >
-                  {selectedMarkerId === START_MARKER_ID && (
-                    <InfoWindow
-                      onCloseClick={() => setSelectedMarkerId(null)}
-                      position={{
-                        lat: routeStart.lat,
-                        lng: routeStart.lng,
-                      }}
-                    >
-                      <div className="text-slate-900 max-w-[220px]">
-                        <div className="text-xs font-bold text-cyan-800 mb-1">
-                          Map pin: S — starting point
-                        </div>
-                        <div className="font-semibold text-cyan-800 mb-1">
-                          {routeStart.label}
-                        </div>
-                        <div className="text-xs mb-2">{routeStart.address}</div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            clearRouteStart();
-                            setSelectedMarkerId(null);
-                          }}
-                          className="text-xs bg-slate-700 text-white px-2 py-1 rounded w-full"
-                        >
-                          Clear starting point
-                        </button>
-                      </div>
-                    </InfoWindow>
-                  )}
-                </Marker>
+                  <MapNameplate
+                    position={{ lat: routeStart.lat, lng: routeStart.lng }}
+                    line1="S"
+                    line2={routeStart.label}
+                  />
+                </Fragment>
               )}
 
               {/* Manual / extra route stops */}
               {manualStops.map((stop) => {
                 const icon = createMarkerIcon("#a855f7");
                 const letter = routeStopLetterByKey.get(`manual:${stop.id}`);
+                const pos = { lat: stop.lat, lng: stop.lng };
                 return (
-                  <Marker
-                    key={`${stop.id}-${letter ?? "x"}`}
-                    position={{ lat: stop.lat, lng: stop.lng }}
-                    icon={icon}
-                    label={
-                      letter
-                        ? { text: letter, ...routeMarkerLabelStyle }
-                        : undefined
-                    }
-                    onClick={() => setSelectedMarkerId(stop.id)}
-                    title={stop.label}
-                  >
-                    {selectedMarkerId === stop.id && (
-                      <InfoWindow
-                        onCloseClick={() => setSelectedMarkerId(null)}
-                        position={{ lat: stop.lat, lng: stop.lng }}
-                      >
-                        <div className="text-slate-900 max-w-[220px]">
-                          {letter ? (
-                            <div className="text-xs font-bold text-amber-800 mb-1">
-                              Route stop {letter}
-                            </div>
-                          ) : null}
-                          <div className="font-semibold mb-1">{stop.label}</div>
-                          <div className="text-xs mb-2">{stop.address}</div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              removeManualStop(stop.id);
-                              setSelectedMarkerId(null);
-                            }}
-                            className="text-xs bg-red-600 text-white px-2 py-1 rounded"
-                          >
-                            Remove from route
-                          </button>
-                        </div>
-                      </InfoWindow>
-                    )}
-                  </Marker>
+                  <Fragment key={`${stop.id}-${letter ?? "x"}`}>
+                    <Marker
+                      position={pos}
+                      icon={icon}
+                      onClick={() => setSelectedMarkerId(stop.id)}
+                      title={stop.label}
+                    >
+                      {selectedMarkerId === stop.id && (
+                        <InfoWindow
+                          onCloseClick={() => setSelectedMarkerId(null)}
+                          position={pos}
+                        >
+                          <div className="text-slate-900 max-w-[220px]">
+                            {letter ? (
+                              <div className="text-xs font-bold text-amber-800 mb-1">
+                                Route stop {letter}
+                              </div>
+                            ) : null}
+                            <div className="font-semibold mb-1">{stop.label}</div>
+                            <div className="text-xs mb-2">{stop.address}</div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                removeManualStop(stop.id);
+                                setSelectedMarkerId(null);
+                              }}
+                              className="text-xs bg-red-600 text-white px-2 py-1 rounded"
+                            >
+                              Remove from route
+                            </button>
+                          </div>
+                        </InfoWindow>
+                      )}
+                    </Marker>
+                    <MapNameplate
+                      position={pos}
+                      line1={letter}
+                      line2={stop.label}
+                    />
+                  </Fragment>
                 );
               })}
 
               {/* Preview before adding to route */}
               {addressPreview && (
+                <Fragment key={PREVIEW_MARKER_ID}>
                 <Marker
-                  key={PREVIEW_MARKER_ID}
                   position={{
                     lat: addressPreview.lat,
                     lng: addressPreview.lng,
@@ -1211,6 +1260,19 @@ export default function MapPage() {
                     </InfoWindow>
                   )}
                 </Marker>
+                <MapNameplate
+                  position={{
+                    lat: addressPreview.lat,
+                    lng: addressPreview.lng,
+                  }}
+                  line1="Preview"
+                  line2={
+                    addressPreview.address.length > 36
+                      ? `${addressPreview.address.slice(0, 34)}…`
+                      : addressPreview.address
+                  }
+                />
+                </Fragment>
               )}
 
               {/* Directions Route */}
