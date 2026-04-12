@@ -10,7 +10,7 @@ export default function ImportPage() {
   const [previewCustomers, setPreviewCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { setCustomers } = useCustomerStore();
+  const { setCustomers, mergeCustomersFromImport } = useCustomerStore();
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -29,10 +29,29 @@ export default function ImportPage() {
     }
   };
 
-  const handleReplace = () => {
-    setCustomers(previewCustomers);
+  const handleMerge = () => {
+    mergeCustomersFromImport(previewCustomers);
+    useCustomerStore.getState().syncRouteStopOrder();
+    const n = previewCustomers.length;
     setPreviewCustomers([]);
-    alert(`Imported ${previewCustomers.length} customers successfully!`);
+    alert(
+      `Merged ${n} customer${n !== 1 ? "s" : ""} by ID. Existing contacts not in this file were kept; map coordinates, route selections, notes, and service frequency were preserved where applicable.`
+    );
+  };
+
+  const handleReplace = () => {
+    if (
+      !confirm(
+        "Replace the entire customer list? This removes everyone not in this CSV, clears per-contact data that only lived in RouteBoss, and drops map coordinates until you geocode again. Saved route history is not deleted, but may reference missing IDs."
+      )
+    ) {
+      return;
+    }
+    setCustomers(previewCustomers);
+    useCustomerStore.getState().syncRouteStopOrder();
+    const n = previewCustomers.length;
+    setPreviewCustomers([]);
+    alert(`Replaced with ${n} customer${n !== 1 ? "s" : ""} from this import.`);
   };
 
   const handleClear = () => {
@@ -46,8 +65,16 @@ export default function ImportPage() {
         <h1 className="text-3xl font-bold mb-2 text-slate-100">
           Import Housecall Pro CSV
         </h1>
-        <p className="text-slate-400 mb-6">
+        <p className="text-slate-400 mb-4">
           Upload your customer export CSV file from Housecall Pro.
+        </p>
+        <p className="text-slate-500 text-sm mb-6">
+          <strong className="text-slate-300">Merge by ID</strong> (recommended)
+          updates matching contacts and adds new ones, keeps everyone who is not
+          in this file, and preserves map coordinates, who is on the current route,
+          notes, and your service frequency.{" "}
+          <strong className="text-slate-300">Replace all</strong> wipes the list
+          and loads only this file.
         </p>
 
         <div className="mb-6">
@@ -137,14 +164,23 @@ export default function ImportPage() {
               )}
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-3">
               <button
+                type="button"
+                onClick={handleMerge}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded transition-colors font-semibold"
+              >
+                Merge import (by customer ID)
+              </button>
+              <button
+                type="button"
                 onClick={handleReplace}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded transition-colors"
               >
-                Replace Existing Customers with This Import
+                Replace entire customer list
               </button>
               <button
+                type="button"
                 onClick={handleClear}
                 className="bg-slate-700 hover:bg-slate-600 text-slate-100 px-6 py-2 rounded transition-colors"
               >

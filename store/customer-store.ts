@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { Customer } from "@/types/customer";
 import { ManualRouteStop } from "@/types/manual-stop";
 import type { RouteStartPoint, RouteStopKey } from "@/types/route-plan";
+import { applyCustomerImportMerge } from "@/lib/customer-import-merge";
 
 function customerHasCoords(c: Customer): boolean {
   return (
@@ -65,6 +66,8 @@ type CustomerStore = {
   /** Optional starting location (shop / home) before first stop */
   routeStart: RouteStartPoint | null;
   setCustomers: (customers: Customer[]) => void;
+  /** Match by Housecall Pro `id`: update from CSV, keep coords / route / notes / frequency; keep customers not in file */
+  mergeCustomersFromImport: (imported: Customer[]) => void;
   updateCustomer: (id: string, patch: Partial<Customer>) => void;
   clearCustomers: () => void;
   addManualStop: (stop: ManualRouteStop) => void;
@@ -89,6 +92,10 @@ export const useCustomerStore = create<CustomerStore>()(
       routeStopOrder: [],
       routeStart: null,
       setCustomers: (customers) => set({ customers }),
+      mergeCustomersFromImport: (imported) =>
+        set((state) => ({
+          customers: applyCustomerImportMerge(state.customers, imported),
+        })),
       updateCustomer: (id, patch) =>
         set((state) => ({
           customers: state.customers.map((c) =>
