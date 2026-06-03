@@ -6,8 +6,12 @@ import { formatDate } from "@/lib/utils";
 import { format } from "date-fns";
 import {
   DEFAULT_TEMPLATE,
+  LOST_AND_FOUND_TEMPLATE,
+  MESSAGE_TEMPLATE_PRESET_KEY,
   buildTemplateVariables,
   applyTemplate,
+  type MessageTemplatePreset,
+  templateForPreset,
 } from "@/lib/message-template";
 import PhoneContactLinks from "@/components/PhoneContactLinks";
 import { useRouteHistoryStore } from "@/store/route-history-store";
@@ -36,13 +40,23 @@ export default function RoutesPage() {
 
   // Load template from localStorage or use default
   const [template, setTemplate] = useState<string>(DEFAULT_TEMPLATE);
+  const [templatePreset, setTemplatePreset] =
+    useState<MessageTemplatePreset>("due-reminder");
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
   const [historyNotice, setHistoryNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    const savedPreset = localStorage.getItem(
+      MESSAGE_TEMPLATE_PRESET_KEY
+    ) as MessageTemplatePreset | null;
     const saved = localStorage.getItem("routeboss:messageTemplate");
+    if (savedPreset === "lost-and-found" || savedPreset === "due-reminder") {
+      setTemplatePreset(savedPreset);
+    }
     if (saved) {
       setTemplate(saved);
+    } else if (savedPreset) {
+      setTemplate(templateForPreset(savedPreset));
     }
   }, []);
 
@@ -50,6 +64,15 @@ export default function RoutesPage() {
   useEffect(() => {
     localStorage.setItem("routeboss:messageTemplate", template);
   }, [template]);
+
+  useEffect(() => {
+    localStorage.setItem(MESSAGE_TEMPLATE_PRESET_KEY, templatePreset);
+  }, [templatePreset]);
+
+  const applyPreset = (preset: MessageTemplatePreset) => {
+    setTemplatePreset(preset);
+    setTemplate(templateForPreset(preset));
+  };
 
   const selectedCustomers = useMemo(() => {
     return customers.filter((c) => c.isSelectedForRoute);
@@ -764,9 +787,35 @@ export default function RoutesPage() {
           </h2>
 
           <div className="bg-slate-700 rounded p-4 mb-4">
-            <label className="block text-sm text-slate-300 mb-2">
-              Message Template
-            </label>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
+              <label className="block text-sm text-slate-300">
+                Message Template
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => applyPreset("due-reminder")}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    templatePreset === "due-reminder"
+                      ? "bg-emerald-700 text-white"
+                      : "border border-slate-500 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  Due reminder
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPreset("lost-and-found")}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    templatePreset === "lost-and-found"
+                      ? "bg-amber-700 text-white"
+                      : "border border-slate-500 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  Lost &amp; Found
+                </button>
+              </div>
+            </div>
             <p className="text-xs text-slate-400 mb-3">
               Use placeholders like{" "}
               <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">

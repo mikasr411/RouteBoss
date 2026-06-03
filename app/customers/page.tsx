@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useCustomerStore } from "@/store/customer-store";
 import { Customer, ServiceFrequency } from "@/types/customer";
 import { formatDate, isCustomerDue, skipServiceCycle, calculateNextServiceDate } from "@/lib/utils";
-import { groupDueCustomersByCity } from "@/lib/message-everyone";
+import { groupDueCustomersByCity, groupLostAndFoundByCity, isLostAndFoundCustomer } from "@/lib/message-everyone";
+import { applyMessageTemplatePreset } from "@/lib/message-template";
 import { parse, compareAsc } from "date-fns";
 import PhoneContactLinks from "@/components/PhoneContactLinks";
 
@@ -104,8 +105,23 @@ export default function CustomersPage() {
   );
 
   const totalDue = useMemo(
-    () => dueByCity.reduce((n, g) => n + g.dueCustomers.length, 0),
+    () => dueByCity.reduce((n, g) => n + g.customers.length, 0),
     [dueByCity]
+  );
+
+  const lostAndFoundByCity = useMemo(
+    () => groupLostAndFoundByCity(customers),
+    [customers]
+  );
+
+  const totalLostAndFound = useMemo(
+    () => lostAndFoundByCity.reduce((n, g) => n + g.customers.length, 0),
+    [lostAndFoundByCity]
+  );
+
+  const filteredLostAndFoundCount = useMemo(
+    () => filteredCustomers.filter(isLostAndFoundCustomer).length,
+    [filteredCustomers]
   );
 
   const filteredDueCount = useMemo(
@@ -120,7 +136,7 @@ export default function CustomersPage() {
     if (count === 0) return false;
     if (!hasExistingRoute) return true;
     return confirm(
-      `Replace your current route with ${count} due customer${count !== 1 ? "s" : ""} ${label}? Extra map stops will be cleared.`
+      `Replace your current route with ${count} customer${count !== 1 ? "s" : ""} ${label}? Extra map stops will be cleared.`
     );
   };
 
@@ -131,10 +147,11 @@ export default function CustomersPage() {
 
   const addDueCityToRoute = (city: string, dueInCity: Customer[]) => {
     const ids = dueInCity.map((c) => c.id);
-    if (!confirmReplaceRoute(`in ${city}`, ids.length)) return;
+    if (!confirmReplaceRoute(`due in ${city}`, ids.length)) return;
+    applyMessageTemplatePreset("due-reminder");
     replaceRouteCustomerSelection(ids);
     showBulkNotice(
-      `Added ${ids.length} due customer${ids.length !== 1 ? "s" : ""} in ${city} to the route.`
+      `Added ${ids.length} due customer${ids.length !== 1 ? "s" : ""} in ${city}. Due-reminder template set on Routes.`
     );
   };
 
@@ -144,14 +161,41 @@ export default function CustomersPage() {
     if (ids.length === 0) return;
     const label =
       selectedCity !== "all"
-        ? `in ${selectedCity}`
+        ? `due in ${selectedCity}`
         : dueOnly
-          ? "(all cities)"
-          : "matching your filters";
+          ? "due (all cities)"
+          : "due matching your filters";
     if (!confirmReplaceRoute(label, ids.length)) return;
+    applyMessageTemplatePreset("due-reminder");
     replaceRouteCustomerSelection(ids);
     showBulkNotice(
-      `Added ${ids.length} due customer${ids.length !== 1 ? "s" : ""} to the route.`
+      `Added ${ids.length} due customer${ids.length !== 1 ? "s" : ""} to the route. Due-reminder template set on Routes.`
+    );
+  };
+
+  const addLostAndFoundCityToRoute = (city: string, contacts: Customer[]) => {
+    const ids = contacts.map((c) => c.id);
+    if (!confirmReplaceRoute(`Lost & Found in ${city}`, ids.length)) return;
+    applyMessageTemplatePreset("lost-and-found");
+    replaceRouteCustomerSelection(ids);
+    showBulkNotice(
+      `Added ${ids.length} Lost & Found contact${ids.length !== 1 ? "s" : ""} in ${city}. Lost & Found template set on Routes.`
+    );
+  };
+
+  const addAllFilteredLostAndFoundToRoute = () => {
+    const matches = filteredCustomers.filter(isLostAndFoundCustomer);
+    const ids = matches.map((c) => c.id);
+    if (ids.length === 0) return;
+    const label =
+      selectedCity !== "all"
+        ? `Lost & Found in ${selectedCity}`
+        : "Lost & Found matching your filters";
+    if (!confirmReplaceRoute(label, ids.length)) return;
+    applyMessageTemplatePreset("lost-and-found");
+    replaceRouteCustomerSelection(ids);
+    showBulkNotice(
+      `Added ${ids.length} Lost & Found contact${ids.length !== 1 ? "s" : ""} to the route.`
     );
   };
 
@@ -294,24 +338,18 @@ export default function CustomersPage() {
           </div>
         </div>
 
-        {/* Message everyone (by city) */}
-        {totalDue > 0 && (
-          <div className="mb-6 rounded-lg border border-emerald-800/60 bg-emerald-950/25 p-4 sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-emerald-100">
-                  Message everyone (by city)
-                </h2>
-                <p className="text-sm text-emerald-200/80 mt-1 max-w-2xl">
-                  Work one city at a time: add all due customers in that city to
-                  your route, then open{" "}
-                  <Link href="/routes" className="underline hover:text-emerald-100">
-                    Routes
-                  </Link>{" "}
-                  to copy personalized messages. Clear the route before switching
-                  to the next city.
-                </p>
-              </div>
+        {/* Messaging workflows */}
+        {(totalDue > 0 || totalLostAndFound > 0) && (
+          <div className="mb-6 space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-slate-600 bg-slate-800/60 p-4">
+              <p className="text-sm text-slate-300">
+                Add a group to your route, then open{" "}
+                <Link href="/routes" className="text-blue-400 underline hover:text-blue-300">
+                  Routes
+                </Link>{" "}
+                to copy messages. Clear the route before switching cities or
+                workflows.
+              </p>
               <div className="flex flex-col sm:flex-row gap-2 shrink-0">
                 {bulkNotice && (
                   <span className="text-sm text-green-400 sm:self-center">
@@ -320,7 +358,7 @@ export default function CustomersPage() {
                 )}
                 <Link
                   href="/routes"
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-semibold text-sm text-center transition-colors"
+                  className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-semibold text-sm text-center transition-colors"
                 >
                   Open messenger →
                 </Link>
@@ -335,55 +373,136 @@ export default function CustomersPage() {
               </div>
             </div>
 
-            {filteredDueCount > 0 && (
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4 pb-4 border-b border-emerald-900/50">
-                <span className="text-sm text-slate-300">
-                  Current filters:{" "}
-                  <strong className="text-slate-100">{filteredDueCount}</strong>{" "}
-                  due
-                  {selectedCity !== "all" ? ` in ${selectedCity}` : ""}
-                  {dueOnly ? "" : " (turn on Due → Due Only to target only due customers)"}
-                </span>
-                <button
-                  type="button"
-                  onClick={addAllFilteredDueToRoute}
-                  className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm font-semibold transition-colors sm:ml-auto"
-                >
-                  Add all due (filtered) to route
-                </button>
+            {totalDue > 0 && (
+              <div className="rounded-lg border border-emerald-800/60 bg-emerald-950/25 p-4 sm:p-5">
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold text-emerald-100">
+                    Message everyone (by city)
+                  </h2>
+                  <p className="text-sm text-emerald-200/80 mt-1">
+                    Customers who are due for service — uses the due-reminder
+                    message template on Routes.
+                  </p>
+                </div>
+
+                {filteredDueCount > 0 && (
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4 pb-4 border-b border-emerald-900/50">
+                    <span className="text-sm text-slate-300">
+                      Current filters:{" "}
+                      <strong className="text-slate-100">{filteredDueCount}</strong>{" "}
+                      due
+                      {selectedCity !== "all" ? ` in ${selectedCity}` : ""}
+                      {dueOnly ? "" : " (turn on Due → Due Only to target only due customers)"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={addAllFilteredDueToRoute}
+                      className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm font-semibold transition-colors sm:ml-auto"
+                    >
+                      Add all due (filtered) to route
+                    </button>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {dueByCity.map(({ city, customers: dueCustomers }) => {
+                    const onRoute = dueCustomers.filter(
+                      (c) => c.isSelectedForRoute
+                    ).length;
+                    return (
+                      <div
+                        key={city}
+                        className="flex flex-col gap-2 rounded border border-slate-600 bg-slate-800/80 p-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-medium text-slate-100 truncate">
+                            {city}
+                          </div>
+                          <div className="text-xs text-slate-400 mt-0.5">
+                            {dueCustomers.length} due
+                            {onRoute > 0 ? ` · ${onRoute} on route` : ""}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => addDueCityToRoute(city, dueCustomers)}
+                          className="bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded text-sm font-medium transition-colors w-full"
+                        >
+                          Add all due to route
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {dueByCity.map(({ city, dueCustomers }) => {
-                const onRoute = dueCustomers.filter(
-                  (c) => c.isSelectedForRoute
-                ).length;
-                return (
-                  <div
-                    key={city}
-                    className="flex flex-col gap-2 rounded border border-slate-600 bg-slate-800/80 p-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="font-medium text-slate-100 truncate">
-                        {city}
-                      </div>
-                      <div className="text-xs text-slate-400 mt-0.5">
-                        {dueCustomers.length} due
-                        {onRoute > 0 ? ` · ${onRoute} on route` : ""}
-                      </div>
-                    </div>
+            {totalLostAndFound > 0 && (
+              <div className="rounded-lg border border-amber-800/60 bg-amber-950/20 p-4 sm:p-5">
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold text-amber-100">
+                    Lost &amp; Found
+                  </h2>
+                  <p className="text-sm text-amber-200/80 mt-1">
+                    Phone on file but no last service date — uses the Lost &amp;
+                    Found message template on Routes.
+                  </p>
+                </div>
+
+                {filteredLostAndFoundCount > 0 && (
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4 pb-4 border-b border-amber-900/40">
+                    <span className="text-sm text-slate-300">
+                      Current filters:{" "}
+                      <strong className="text-slate-100">
+                        {filteredLostAndFoundCount}
+                      </strong>{" "}
+                      Lost &amp; Found
+                      {selectedCity !== "all" ? ` in ${selectedCity}` : ""}
+                    </span>
                     <button
                       type="button"
-                      onClick={() => addDueCityToRoute(city, dueCustomers)}
-                      className="bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded text-sm font-medium transition-colors w-full"
+                      onClick={addAllFilteredLostAndFoundToRoute}
+                      className="bg-amber-700 hover:bg-amber-600 text-white px-4 py-2 rounded text-sm font-semibold transition-colors sm:ml-auto"
                     >
-                      Add all due to route
+                      Add all Lost &amp; Found (filtered) to route
                     </button>
                   </div>
-                );
-              })}
-            </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {lostAndFoundByCity.map(({ city, customers: contacts }) => {
+                    const onRoute = contacts.filter(
+                      (c) => c.isSelectedForRoute
+                    ).length;
+                    return (
+                      <div
+                        key={`lf-${city}`}
+                        className="flex flex-col gap-2 rounded border border-slate-600 bg-slate-800/80 p-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-medium text-slate-100 truncate">
+                            {city}
+                          </div>
+                          <div className="text-xs text-slate-400 mt-0.5">
+                            {contacts.length} no service history
+                            {onRoute > 0 ? ` · ${onRoute} on route` : ""}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            addLostAndFoundCityToRoute(city, contacts)
+                          }
+                          className="bg-amber-700 hover:bg-amber-600 text-white px-3 py-2 rounded text-sm font-medium transition-colors w-full"
+                        >
+                          Add all Lost &amp; Found to route
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

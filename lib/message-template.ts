@@ -72,11 +72,32 @@ export function applyTemplate(
 }
 
 /**
- * Default message template
+ * Default message template (customers with service history / due reminders)
  */
 export const DEFAULT_TEMPLATE = `Hey {displayName}, it's been {daysSinceLastService} days since we last cleaned your solar panels at {fullAddress}. 
 
 We're switching to a semi-automated system for scheduling routes in your neighborhood and we'll be in your area soon. 
 
 Reply YES to confirm you'd like to be added to this route.`;
+
+/** For contacts with no last service date on file. */
+export const LOST_AND_FOUND_TEMPLATE = `Hey {displayName}, this is your solar panel cleaning team reaching out about {fullAddress} in {city}.
+
+We don't have a recent service on file for your home. We're building routes in your area and wanted to see if you'd like to get back on the schedule.
+
+Reply YES if you'd like a quote or to be added to an upcoming route.`;
+
+export type MessageTemplatePreset = "due-reminder" | "lost-and-found";
+
+export const MESSAGE_TEMPLATE_PRESET_KEY = "routeboss:messageTemplatePreset";
+
+export function templateForPreset(preset: MessageTemplatePreset): string {
+  return preset === "lost-and-found" ? LOST_AND_FOUND_TEMPLATE : DEFAULT_TEMPLATE;
+}
+
+export function applyMessageTemplatePreset(preset: MessageTemplatePreset): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(MESSAGE_TEMPLATE_PRESET_KEY, preset);
+  localStorage.setItem("routeboss:messageTemplate", templateForPreset(preset));
+}
 
