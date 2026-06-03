@@ -746,8 +746,12 @@ export default function RoutesPage() {
                 No stops on this route yet.
               </p>
               <p className="text-slate-500 text-sm">
-                Select customers on the <strong>Customers</strong> page, or add
-                an address from the <strong>Map</strong> page.
+                Use <strong>Message everyone (by city)</strong> on the{" "}
+                <a href="/customers" className="text-blue-400 underline hover:text-blue-300">
+                  Customers
+                </a>{" "}
+                page to add all due contacts in a city, or select stops on the{" "}
+                <strong>Map</strong>.
               </p>
             </div>
           )}

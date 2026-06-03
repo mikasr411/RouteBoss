@@ -80,6 +80,10 @@ type CustomerStore = {
   moveRouteStopInOrder: (index: number, delta: -1 | 1) => void;
   setRouteStart: (start: RouteStartPoint | null) => void;
   clearRouteStart: () => void;
+  /** Replace route with exactly these customers (sorted A–Z by name). Clears manual stops. */
+  replaceRouteCustomerSelection: (customerIds: string[]) => void;
+  /** Unselect all customers and clear manual stops / visit order. */
+  clearRouteCustomerSelection: () => void;
 };
 
 const STORAGE_KEY = "routeboss:customers";
@@ -143,6 +147,35 @@ export const useCustomerStore = create<CustomerStore>()(
         }),
       setRouteStart: (routeStart) => set({ routeStart }),
       clearRouteStart: () => set({ routeStart: null }),
+      replaceRouteCustomerSelection: (customerIds) =>
+        set((state) => {
+          const idSet = new Set(customerIds);
+          const nameById = new Map(
+            state.customers.map((c) => [c.id, c.displayName] as const)
+          );
+          const sortedIds = [...customerIds].sort((a, b) =>
+            (nameById.get(a) ?? "").localeCompare(nameById.get(b) ?? "")
+          );
+          return {
+            customers: state.customers.map((c) => ({
+              ...c,
+              isSelectedForRoute: idSet.has(c.id),
+            })),
+            manualStops: [],
+            routeStopOrder: sortedIds.map((id) => ({
+              kind: "customer" as const,
+              id,
+            })),
+          };
+        }),
+      clearRouteCustomerSelection: () =>
+        set((state) => ({
+          customers: state.customers.map((c) =>
+            c.isSelectedForRoute ? { ...c, isSelectedForRoute: false } : c
+          ),
+          manualStops: [],
+          routeStopOrder: [],
+        })),
     }),
     {
       name: STORAGE_KEY,

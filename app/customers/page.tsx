@@ -1,16 +1,25 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import { useCustomerStore } from "@/store/customer-store";
 import { Customer, ServiceFrequency } from "@/types/customer";
 import { formatDate, isCustomerDue, skipServiceCycle, calculateNextServiceDate } from "@/lib/utils";
+import { groupDueCustomersByCity } from "@/lib/message-everyone";
 import { parse, compareAsc } from "date-fns";
 import PhoneContactLinks from "@/components/PhoneContactLinks";
 
 type SortOption = "city" | "lastService" | "nextService";
 
 export default function CustomersPage() {
-  const { customers, updateCustomer } = useCustomerStore();
+  const {
+    customers,
+    manualStops,
+    updateCustomer,
+    replaceRouteCustomerSelection,
+    clearRouteCustomerSelection,
+  } = useCustomerStore();
+  const [bulkNotice, setBulkNotice] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCity, setSelectedCity] = useState<string>("all");
   const [selectedFrequency, setSelectedFrequency] = useState<string>("all");
@@ -88,6 +97,73 @@ export default function CustomersPage() {
   }, [customers, searchQuery, selectedCity, selectedFrequency, dueOnly, sortBy]);
 
   const selectedCount = customers.filter((c) => c.isSelectedForRoute).length;
+
+  const dueByCity = useMemo(
+    () => groupDueCustomersByCity(customers),
+    [customers]
+  );
+
+  const totalDue = useMemo(
+    () => dueByCity.reduce((n, g) => n + g.dueCustomers.length, 0),
+    [dueByCity]
+  );
+
+  const filteredDueCount = useMemo(
+    () => filteredCustomers.filter(isCustomerDue).length,
+    [filteredCustomers]
+  );
+
+  const hasExistingRoute =
+    customers.some((c) => c.isSelectedForRoute) || manualStops.length > 0;
+
+  const confirmReplaceRoute = (label: string, count: number) => {
+    if (count === 0) return false;
+    if (!hasExistingRoute) return true;
+    return confirm(
+      `Replace your current route with ${count} due customer${count !== 1 ? "s" : ""} ${label}? Extra map stops will be cleared.`
+    );
+  };
+
+  const showBulkNotice = (message: string) => {
+    setBulkNotice(message);
+    window.setTimeout(() => setBulkNotice(null), 4000);
+  };
+
+  const addDueCityToRoute = (city: string, dueInCity: Customer[]) => {
+    const ids = dueInCity.map((c) => c.id);
+    if (!confirmReplaceRoute(`in ${city}`, ids.length)) return;
+    replaceRouteCustomerSelection(ids);
+    showBulkNotice(
+      `Added ${ids.length} due customer${ids.length !== 1 ? "s" : ""} in ${city} to the route.`
+    );
+  };
+
+  const addAllFilteredDueToRoute = () => {
+    const dueFiltered = filteredCustomers.filter(isCustomerDue);
+    const ids = dueFiltered.map((c) => c.id);
+    if (ids.length === 0) return;
+    const label =
+      selectedCity !== "all"
+        ? `in ${selectedCity}`
+        : dueOnly
+          ? "(all cities)"
+          : "matching your filters";
+    if (!confirmReplaceRoute(label, ids.length)) return;
+    replaceRouteCustomerSelection(ids);
+    showBulkNotice(
+      `Added ${ids.length} due customer${ids.length !== 1 ? "s" : ""} to the route.`
+    );
+  };
+
+  const handleClearRoute = () => {
+    if (
+      !hasExistingRoute ||
+      confirm("Clear all customers from the route and remove extra map stops?")
+    ) {
+      clearRouteCustomerSelection();
+      showBulkNotice("Route selection cleared.");
+    }
+  };
 
   const handleFrequencyChange = (customerId: string, newFrequency: ServiceFrequency) => {
     const customer = customers.find((c) => c.id === customerId);
@@ -217,6 +293,99 @@ export default function CustomersPage() {
             </select>
           </div>
         </div>
+
+        {/* Message everyone (by city) */}
+        {totalDue > 0 && (
+          <div className="mb-6 rounded-lg border border-emerald-800/60 bg-emerald-950/25 p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-emerald-100">
+                  Message everyone (by city)
+                </h2>
+                <p className="text-sm text-emerald-200/80 mt-1 max-w-2xl">
+                  Work one city at a time: add all due customers in that city to
+                  your route, then open{" "}
+                  <Link href="/routes" className="underline hover:text-emerald-100">
+                    Routes
+                  </Link>{" "}
+                  to copy personalized messages. Clear the route before switching
+                  to the next city.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                {bulkNotice && (
+                  <span className="text-sm text-green-400 sm:self-center">
+                    {bulkNotice}
+                  </span>
+                )}
+                <Link
+                  href="/routes"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-semibold text-sm text-center transition-colors"
+                >
+                  Open messenger →
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleClearRoute}
+                  disabled={!hasExistingRoute}
+                  className="border border-slate-500 text-slate-300 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded text-sm transition-colors"
+                >
+                  Clear route
+                </button>
+              </div>
+            </div>
+
+            {filteredDueCount > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4 pb-4 border-b border-emerald-900/50">
+                <span className="text-sm text-slate-300">
+                  Current filters:{" "}
+                  <strong className="text-slate-100">{filteredDueCount}</strong>{" "}
+                  due
+                  {selectedCity !== "all" ? ` in ${selectedCity}` : ""}
+                  {dueOnly ? "" : " (turn on Due → Due Only to target only due customers)"}
+                </span>
+                <button
+                  type="button"
+                  onClick={addAllFilteredDueToRoute}
+                  className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm font-semibold transition-colors sm:ml-auto"
+                >
+                  Add all due (filtered) to route
+                </button>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {dueByCity.map(({ city, dueCustomers }) => {
+                const onRoute = dueCustomers.filter(
+                  (c) => c.isSelectedForRoute
+                ).length;
+                return (
+                  <div
+                    key={city}
+                    className="flex flex-col gap-2 rounded border border-slate-600 bg-slate-800/80 p-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-medium text-slate-100 truncate">
+                        {city}
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">
+                        {dueCustomers.length} due
+                        {onRoute > 0 ? ` · ${onRoute} on route` : ""}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => addDueCityToRoute(city, dueCustomers)}
+                      className="bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded text-sm font-medium transition-colors w-full"
+                    >
+                      Add all due to route
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Table */}
         <div className="w-full min-w-0 max-w-full overflow-x-auto">
