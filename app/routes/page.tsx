@@ -525,6 +525,13 @@ export default function RoutesPage() {
           >
             Clear Route Selection
           </button>
+          <a
+            href="/map"
+            onClick={() => sessionStorage.setItem("routeboss:mapRouteOnly", "1")}
+            className="bg-emerald-700 hover:bg-emerald-600 text-white px-6 py-3 rounded font-semibold transition-colors w-full sm:w-auto text-center"
+          >
+            View route on map
+          </a>
         </div>
 
         {/* Tip */}

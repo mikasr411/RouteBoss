@@ -137,6 +137,7 @@ export default function MapPage() {
   const [selectedCity, setSelectedCity] = useState<string>("all");
   const [selectedFrequency, setSelectedFrequency] = useState<string>("all");
   const [dueOnly, setDueOnly] = useState(false);
+  const [routeOnlyView, setRouteOnlyView] = useState(false);
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
   const [geocodingProgress, setGeocodingProgress] = useState<{
     current: number;
@@ -153,6 +154,13 @@ export default function MapPage() {
     null
   );
   const [isMapLoaded, setIsMapLoaded] = useState(false);
+
+  useEffect(() => {
+    if (sessionStorage.getItem("routeboss:mapRouteOnly") === "1") {
+      setRouteOnlyView(true);
+      sessionStorage.removeItem("routeboss:mapRouteOnly");
+    }
+  }, []);
   const [isOptimizingRoute, setIsOptimizingRoute] = useState(false);
   /** After choosing “tap another route pin”, next route marker click sets position. */
   const [routeMoveAwaitingTargetFromIndex, setRouteMoveAwaitingTargetFromIndex] =
@@ -224,24 +232,26 @@ export default function MapPage() {
     return filteredCustomers.filter(hasCoordinates);
   }, [filteredCustomers]);
 
-  // Create marker icons for all customers (memoized)
-  const markerIcons = useMemo(() => {
-    const icons: Record<string, any> = {};
-    customersWithCoords.forEach((customer) => {
-      const color = getMarkerColor(customer);
-      const icon = createMarkerIcon(color);
-      // Only store if icon was successfully created
-      if (icon) {
-        icons[customer.id] = icon;
-      }
-    });
-    return icons;
-  }, [customersWithCoords]);
-
   // Selected customers for route
   const selectedForRoute = useMemo(() => {
     return customersWithCoords.filter((c) => c.isSelectedForRoute);
   }, [customersWithCoords]);
+
+  /** Map pins + sidebar list — all filtered customers, or route stops only. */
+  const customersOnMap = useMemo(() => {
+    if (routeOnlyView) return selectedForRoute;
+    return customersWithCoords;
+  }, [routeOnlyView, selectedForRoute, customersWithCoords]);
+
+  const manualStopsOnMap = useMemo(() => {
+    if (!routeOnlyView) return manualStops;
+    const onRoute = new Set(
+      routeStopOrder
+        .filter((k) => k.kind === "manual")
+        .map((k) => k.id)
+    );
+    return manualStops.filter((s) => onRoute.has(s.id));
+  }, [routeOnlyView, manualStops, routeStopOrder]);
 
   useEffect(() => {
     syncRouteStopOrder();
@@ -310,8 +320,18 @@ export default function MapPage() {
     return { withCoords, withoutCoords };
   }, [customers]);
 
-  // Calculate map center from customers
+  // Calculate map center from visible customers / route
   const mapCenter = useMemo(() => {
+    if (routeOnlyView && orderedRoutePoints.length > 0) {
+      const avgLat =
+        orderedRoutePoints.reduce((sum, p) => sum + p.lat, 0) /
+        orderedRoutePoints.length;
+      const avgLng =
+        orderedRoutePoints.reduce((sum, p) => sum + p.lng, 0) /
+        orderedRoutePoints.length;
+      return { lat: avgLat, lng: avgLng };
+    }
+
     if (customersWithCoords.length === 0) return defaultCenter;
 
     const avgLat =
@@ -322,7 +342,25 @@ export default function MapPage() {
       customersWithCoords.length;
 
     return { lat: avgLat, lng: avgLng };
-  }, [customersWithCoords]);
+  }, [routeOnlyView, orderedRoutePoints, customersWithCoords]);
+
+  const fitMapToRoute = useCallback(() => {
+    if (!mapRef.current || orderedRoutePoints.length === 0) return;
+    const google = (window as any).google;
+    if (!google?.maps?.LatLngBounds) return;
+
+    const bounds = new google.maps.LatLngBounds();
+    for (const p of orderedRoutePoints) {
+      bounds.extend(p);
+    }
+    mapRef.current.fitBounds(bounds, 48);
+  }, [orderedRoutePoints]);
+
+  useEffect(() => {
+    if (!routeOnlyView || !isMapLoaded) return;
+    const timer = window.setTimeout(fitMapToRoute, 150);
+    return () => window.clearTimeout(timer);
+  }, [routeOnlyView, isMapLoaded, fitMapToRoute, orderedRoutePoints.length]);
 
   // Geocode missing addresses
   const handleGeocodeMissing = useCallback(async () => {
@@ -814,9 +852,46 @@ export default function MapPage() {
       <div className="flex flex-col h-[calc(100dvh-4.5rem)] sm:h-[calc(100dvh-4rem)] min-h-[300px] w-full max-w-full min-w-0 overflow-hidden bg-slate-900">
         {/* Header */}
         <div className="shrink-0 bg-slate-800 border-b border-slate-700 px-3 sm:px-4 py-2 sm:py-3">
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-100">
-            Map View
-          </h1>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-100">
+              Map View
+            </h1>
+            <div
+              className="inline-flex rounded-lg border border-slate-600 overflow-hidden text-sm shrink-0"
+              role="group"
+              aria-label="Map display mode"
+            >
+              <button
+                type="button"
+                onClick={() => setRouteOnlyView(false)}
+                className={`px-3 py-1.5 font-medium transition-colors ${
+                  !routeOnlyView
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                }`}
+              >
+                All customers
+              </button>
+              <button
+                type="button"
+                onClick={() => setRouteOnlyView(true)}
+                className={`px-3 py-1.5 font-medium transition-colors border-l border-slate-600 ${
+                  routeOnlyView
+                    ? "bg-emerald-600 text-white"
+                    : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                }`}
+              >
+                Route only
+              </button>
+            </div>
+          </div>
+          {routeOnlyView && (
+            <p className="text-xs text-emerald-200/80 mt-2">
+              Showing {routeStopOrder.length} route stop
+              {routeStopOrder.length !== 1 ? "s" : ""}
+              {routeStart ? " + starting point" : ""} only.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-1 flex-col md:flex-row min-h-0 min-w-0 overflow-hidden">
@@ -943,13 +1018,32 @@ export default function MapPage() {
             {/* Summary */}
             <div className="p-3 sm:p-4 border-b border-slate-700 order-4 md:order-none shrink-0">
               <div className="text-sm text-slate-300">
-                <div>Visible customers: {customersWithCoords.length}</div>
-                <div>
-                  Selected for route: {selectedForRoute.length} customers
-                  {manualStops.length > 0
-                    ? ` + ${manualStops.length} extra`
-                    : ""}
-                </div>
+                {routeOnlyView ? (
+                  <>
+                    <div>
+                      Route stops on map: {customersOnMap.length} customer
+                      {customersOnMap.length !== 1 ? "s" : ""}
+                      {manualStops.length > 0
+                        ? ` + ${manualStops.length} extra`
+                        : ""}
+                    </div>
+                    {routeStopOrder.length === 0 && (
+                      <div className="text-amber-300/90 text-xs mt-1">
+                        No stops on your route yet.
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div>Visible customers: {customersWithCoords.length}</div>
+                    <div>
+                      Selected for route: {selectedForRoute.length} customers
+                      {manualStops.length > 0
+                        ? ` + ${manualStops.length} extra`
+                        : ""}
+                    </div>
+                  </>
+                )}
               </div>
               {directionsError && (
                 <div className="mt-2 text-xs text-red-400">{directionsError}</div>
@@ -1155,6 +1249,24 @@ export default function MapPage() {
             </div>
 
             {/* Filters */}
+            {routeOnlyView ? (
+              <div className="p-3 sm:p-4 border-b border-slate-700 order-6 md:order-none shrink-0">
+                <p className="text-xs text-slate-400">
+                  Filters are hidden in route-only view. Switch to{" "}
+                  <span className="text-slate-200">All customers</span> to
+                  browse and add stops.
+                </p>
+                {routeStopOrder.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={fitMapToRoute}
+                    className="mt-2 w-full bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+                  >
+                    Fit map to route
+                  </button>
+                )}
+              </div>
+            ) : (
             <div className="p-3 sm:p-4 border-b border-slate-700 space-y-3 order-6 md:order-none shrink-0">
               <div>
                 <label className="block text-xs text-slate-300 mb-1">
@@ -1213,16 +1325,19 @@ export default function MapPage() {
                 </select>
               </div>
             </div>
+            )}
 
             {/* Customer list: on mobile, whole panel scrolls; on md+, only this section scrolls */}
             <div className="flex-none order-7 md:order-none">
-              {customersWithCoords.length === 0 ? (
+              {customersOnMap.length === 0 ? (
                 <div className="p-4 text-center text-slate-400 text-sm">
-                  No customers with coordinates match filters.
+                  {routeOnlyView
+                    ? "No route customers with coordinates yet."
+                    : "No customers with coordinates match filters."}
                 </div>
               ) : (
                 <div className="divide-y divide-slate-700">
-                  {customersWithCoords.map((customer) => {
+                  {customersOnMap.map((customer) => {
                     return (
                       <div
                         key={customer.id}
@@ -1392,7 +1507,7 @@ export default function MapPage() {
               }}
             >
               {/* Markers */}
-              {customersWithCoords.map((customer) => {
+              {customersOnMap.map((customer) => {
                 const color = getMarkerColor(customer);
                 const letter = routeStopLetterByKey.get(`customer:${customer.id}`);
                 const icon = markerIconForColorAndLabel(color, letter);
@@ -1515,7 +1630,7 @@ export default function MapPage() {
               )}
 
               {/* Manual / extra route stops */}
-              {manualStops.map((stop) => {
+              {manualStopsOnMap.map((stop) => {
                 const letter = routeStopLetterByKey.get(`manual:${stop.id}`);
                 const icon = markerIconForColorAndLabel("#a855f7", letter);
                 const pos = { lat: stop.lat, lng: stop.lng };
