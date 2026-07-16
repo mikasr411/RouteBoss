@@ -730,7 +730,70 @@ export default function MapPage() {
     return m;
   }, [savedRoutes]);
 
-  /** Persist the live map route onto the current working day */
+  /** Persist the live map route onto a day; can be silent during day switches. */
+  const persistWorkingDayRoute = useCallback(
+    (
+      dayToSave: string,
+      options?: { silent?: boolean; routeId?: string | null }
+    ): string | null => {
+      const { silent = false, routeId = workingRouteId } = options ?? {};
+      const snap = snapshotLiveRoute();
+      const stopCount = snap.customerIds.length + snap.manualStops.length;
+      if (stopCount === 0) return null;
+
+      const dayLabel = (() => {
+        try {
+          return format(parse(dayToSave, "yyyy-MM-dd", new Date()), "EEE M/d");
+        } catch {
+          return dayToSave;
+        }
+      })();
+
+      const dayRoutes = savedRoutes
+        .filter((r) => r.routeDate === dayToSave)
+        .sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+      const existing =
+        (routeId &&
+          savedRoutes.find((r) => r.id === routeId && r.routeDate === dayToSave)) ||
+        (dayRoutes.length === 1 ? dayRoutes[0] : null);
+
+      if (existing) {
+        updateSavedRoute(existing.id, {
+          routeDate: dayToSave,
+          customerIds: snap.customerIds,
+          manualStops: snap.manualStops,
+          routeStopOrder: snap.routeStopOrder,
+          routeStart: snap.routeStart,
+        });
+        setWorkingRouteId(existing.id);
+        if (!silent) {
+          showDayNotice(
+            `Saved ${stopCount} stop${stopCount !== 1 ? "s" : ""} to ${dayLabel} (${existing.name}).`
+          );
+        }
+        return existing.id;
+      }
+
+      const id = saveRoute({
+        name: `Route ${dayLabel}`,
+        routeDate: dayToSave,
+        customerIds: snap.customerIds,
+        manualStops: snap.manualStops,
+        routeStopOrder: snap.routeStopOrder,
+        routeStart: snap.routeStart,
+      });
+      setWorkingRouteId(id);
+      if (!silent) {
+        showDayNotice(
+          `Saved ${stopCount} stop${stopCount !== 1 ? "s" : ""} to ${dayLabel}.`
+        );
+      }
+      return id;
+    },
+    [saveRoute, savedRoutes, showDayNotice, updateSavedRoute, workingRouteId]
+  );
+
+  /** Manual save button for the current working day. */
   const handleSaveToWorkingDay = useCallback(() => {
     const snap = snapshotLiveRoute();
     const stopCount = snap.customerIds.length + snap.manualStops.length;
@@ -738,70 +801,16 @@ export default function MapPage() {
       showDayNotice("Add at least one stop before saving.");
       return;
     }
+    persistWorkingDayRoute(workingDay);
+  }, [persistWorkingDayRoute, showDayNotice, workingDay]);
 
-    const dayLabel = (() => {
-      try {
-        return format(parse(workingDay, "yyyy-MM-dd", new Date()), "EEE M/d");
-      } catch {
-        return workingDay;
-      }
-    })();
-
-    const existing =
-      (workingRouteId &&
-        savedRoutes.find(
-          (r) => r.id === workingRouteId && r.routeDate === workingDay
-        )) ||
-      (routesForWorkingDay.length === 1 ? routesForWorkingDay[0] : null);
-
-    if (existing) {
-      updateSavedRoute(existing.id, {
-        routeDate: workingDay,
-        customerIds: snap.customerIds,
-        manualStops: snap.manualStops,
-        routeStopOrder: snap.routeStopOrder,
-        routeStart: snap.routeStart,
-      });
-      setWorkingRouteId(existing.id);
-      showDayNotice(
-        `Saved ${stopCount} stop${stopCount !== 1 ? "s" : ""} to ${dayLabel} (${existing.name}).`
-      );
-      return;
-    }
-
-    const id = saveRoute({
-      name: `Route ${dayLabel}`,
-      routeDate: workingDay,
-      customerIds: snap.customerIds,
-      manualStops: snap.manualStops,
-      routeStopOrder: snap.routeStopOrder,
-      routeStart: snap.routeStart,
-    });
-    setWorkingRouteId(id);
-    showDayNotice(
-      `Saved ${stopCount} stop${stopCount !== 1 ? "s" : ""} to ${dayLabel}.`
-    );
-  }, [
-    workingDay,
-    workingRouteId,
-    savedRoutes,
-    routesForWorkingDay,
-    saveRoute,
-    updateSavedRoute,
-    showDayNotice,
-  ]);
-
-  /** Switch the working day and load that day's saved route (or clear) */
+  /** Switch the working day and load that day's saved route (or clear). */
   const switchWorkingDay = useCallback(
     (dateKey: string) => {
       if (dateKey === workingDay) return;
 
-      const hasLive = liveRouteHasStops();
-      if (hasLive) {
-        const choice = window.confirm(
-          `Switch to ${format(parse(dateKey, "yyyy-MM-dd", new Date()), "EEEE M/d")}?\n\nOK = load that day's saved route (current map route will be replaced).\nCancel = stay on this day.\n\nTip: click “Save to day” first if you want to keep today's work.`
-        );
-        if (!choice) return;
+      if (liveRouteHasStops()) {
+        persistWorkingDayRoute(workingDay, { silent: true });
       }
 
       setWorkingDay(dateKey);
@@ -827,7 +836,7 @@ export default function MapPage() {
         );
       }
     },
-    [workingDay, savedRoutes, showDayNotice]
+    [persistWorkingDayRoute, savedRoutes, showDayNotice, workingDay]
   );
 
   /** Load a saved route from the week planner and focus the map on it */
@@ -1211,7 +1220,7 @@ export default function MapPage() {
                 disabled={routeStopOrder.length === 0 && !liveRouteHasStops()}
                 className="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-3 py-2 rounded text-sm font-semibold transition-colors w-full sm:w-auto"
               >
-                Save to{" "}
+                Save now{" "}
                 {(() => {
                   try {
                     return format(
@@ -1231,13 +1240,13 @@ export default function MapPage() {
                     {" · "}
                     {workingRoute.customerIds.length +
                       workingRoute.manualStops.length}{" "}
-                    saved stops. Switch days to load another; save to keep
-                    changes.
+                    saved stops. Switching days auto-saves this route before
+                    loading the next day.
                   </>
                 ) : (
                   <>
                     No saved route for this day yet. Build stops on the map,
-                    then save. Tap another day to switch.
+                    then tap Save now, or just switch days and it will auto-save.
                   </>
                 )}
               </p>
