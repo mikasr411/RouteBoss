@@ -27,6 +27,19 @@ export default function WeekRoutePlanner({ onUseRoute }: Props) {
   const [weekAnchor, setWeekAnchor] = useState<Date>(() => new Date());
   const [dragRouteId, setDragRouteId] = useState<string | null>(null);
   const [dragOverDay, setDragOverDay] = useState<string | null>(null);
+  /** Days whose route list is expanded; today starts open */
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(
+    () => new Set([format(new Date(), "yyyy-MM-dd")])
+  );
+
+  const toggleDay = (dateKey: string) => {
+    setExpandedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(dateKey)) next.delete(dateKey);
+      else next.add(dateKey);
+      return next;
+    });
+  };
 
   const weekDays = useMemo(() => {
     const start = startOfWeek(weekAnchor);
@@ -126,13 +139,14 @@ export default function WeekRoutePlanner({ onUseRoute }: Props) {
         . Drag a route onto another day to reschedule it.
       </p>
 
-      {/* Days as a vertical list */}
+      {/* Days as collapsible rows */}
       <div className="space-y-2">
         {weekDays.map((day) => {
           const dateKey = format(day, "yyyy-MM-dd");
           const dayRoutes = savedRoutesByDate.get(dateKey) ?? [];
           const today = isToday(day);
           const isDropTarget = dragOverDay === dateKey && dragRouteId !== null;
+          const expanded = expandedDays.has(dateKey) || isDropTarget;
           return (
             <div
               key={dateKey}
@@ -146,7 +160,7 @@ export default function WeekRoutePlanner({ onUseRoute }: Props) {
                 if (dragOverDay === dateKey) setDragOverDay(null);
               }}
               onDrop={(e) => handleDropOnDay(e, dateKey)}
-              className={`rounded border p-2 transition-colors ${
+              className={`rounded border transition-colors ${
                 isDropTarget
                   ? "border-amber-400 bg-amber-900/20"
                   : today
@@ -154,7 +168,12 @@ export default function WeekRoutePlanner({ onUseRoute }: Props) {
                     : "border-slate-600 bg-slate-800/70"
               }`}
             >
-              <div className="flex items-center justify-between mb-1">
+              <button
+                type="button"
+                onClick={() => toggleDay(dateKey)}
+                aria-expanded={expanded}
+                className="w-full flex items-center justify-between gap-2 px-2 py-2 text-left"
+              >
                 <span
                   className={`text-xs font-semibold ${
                     today ? "text-blue-300" : "text-slate-300"
@@ -166,18 +185,27 @@ export default function WeekRoutePlanner({ onUseRoute }: Props) {
                   </span>
                   {today ? " · Today" : ""}
                 </span>
-                {dayRoutes.length > 0 && (
-                  <span className="text-[11px] text-slate-500">
+                <span className="flex items-center gap-2 shrink-0">
+                  <span
+                    className={`text-[11px] ${
+                      dayRoutes.length > 0 ? "text-slate-300" : "text-slate-600"
+                    }`}
+                  >
                     {dayRoutes.length} route{dayRoutes.length !== 1 ? "s" : ""}
                   </span>
-                )}
-              </div>
+                  <span className="text-slate-500 text-[10px]">
+                    {expanded ? "▲" : "▼"}
+                  </span>
+                </span>
+              </button>
 
-              {dayRoutes.length === 0 ? (
-                <div className="text-[11px] text-slate-600 py-0.5">
-                  {isDropTarget ? "Drop here" : "No routes"}
-                </div>
-              ) : (
+              {expanded && (
+                <div className="px-2 pb-2">
+                  {dayRoutes.length === 0 ? (
+                    <div className="text-[11px] text-slate-600 py-0.5">
+                      {isDropTarget ? "Drop here" : "No routes"}
+                    </div>
+                  ) : (
                 <ul className="space-y-1.5">
                   {dayRoutes.map((r) => {
                     const n = r.customerIds.length + r.manualStops.length;
@@ -253,6 +281,8 @@ export default function WeekRoutePlanner({ onUseRoute }: Props) {
                     );
                   })}
                 </ul>
+                  )}
+                </div>
               )}
             </div>
           );
