@@ -142,6 +142,8 @@ export default function MapPage() {
   const [dueOnly, setDueOnly] = useState(false);
   const [routeOnlyView, setRouteOnlyView] = useState(false);
   const [weekPlannerOpen, setWeekPlannerOpen] = useState(false);
+  /** Phone layout: sidebar tools live in a dropdown overlay so the map fills the screen */
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
   const [geocodingProgress, setGeocodingProgress] = useState<{
     current: number;
@@ -480,6 +482,7 @@ export default function MapPage() {
       });
       mapRef.current.setZoom(14);
       setSelectedMarkerId(customer.id);
+      setMobileToolsOpen(false);
     },
     []
   );
@@ -588,6 +591,7 @@ export default function MapPage() {
       }
       setAddressPreview({ lat: coords.lat, lng: coords.lng, address: q });
       setSelectedMarkerId(PREVIEW_MARKER_ID);
+      setMobileToolsOpen(false);
       if (mapRef.current) {
         mapRef.current.panTo({ lat: coords.lat, lng: coords.lng });
         mapRef.current.setZoom(15);
@@ -639,6 +643,7 @@ export default function MapPage() {
         lng: coords.lng,
       });
       setSelectedMarkerId(START_MARKER_ID);
+      setMobileToolsOpen(false);
       if (mapRef.current) {
         mapRef.current.panTo({ lat: coords.lat, lng: coords.lng });
         mapRef.current.setZoom(12);
@@ -871,6 +876,18 @@ export default function MapPage() {
             <div className="flex flex-wrap items-center gap-2 shrink-0">
               <button
                 type="button"
+                onClick={() => setMobileToolsOpen((v) => !v)}
+                aria-expanded={mobileToolsOpen}
+                className={`md:hidden px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                  mobileToolsOpen
+                    ? "bg-blue-600 border-blue-500 text-white"
+                    : "bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600"
+                }`}
+              >
+                Tools {mobileToolsOpen ? "▲" : "▼"}
+              </button>
+              <button
+                type="button"
                 onClick={() => setWeekPlannerOpen((v) => !v)}
                 aria-expanded={weekPlannerOpen}
                 className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
@@ -940,9 +957,26 @@ export default function MapPage() {
           )}
         </div>
 
-        <div className="flex flex-1 flex-col md:flex-row min-h-0 min-w-0 overflow-hidden">
-          {/* Sidebar — below map on mobile, left column on md+ */}
-          <div className="flex flex-col order-2 md:order-1 w-full min-w-0 md:w-80 md:max-w-[20rem] md:shrink-0 flex-1 min-h-0 overflow-y-auto overscroll-y-contain bg-slate-800 border-t md:border-t-0 md:border-r border-slate-700">
+        <div className="relative flex flex-1 flex-col md:flex-row min-h-0 min-w-0 overflow-hidden">
+          {/* Sidebar — dropdown overlay on mobile (Tools button), left column on md+ */}
+          <div
+            className={`${
+              mobileToolsOpen ? "flex" : "hidden"
+            } md:flex flex-col absolute inset-0 z-20 md:static md:z-auto w-full min-w-0 md:w-80 md:max-w-[20rem] md:shrink-0 min-h-0 overflow-y-auto overscroll-y-contain bg-slate-800 md:border-r border-slate-700`}
+          >
+            {/* Mobile close bar */}
+            <div className="md:hidden sticky top-0 z-10 flex items-center justify-between bg-slate-800/95 backdrop-blur border-b border-slate-700 px-3 py-2 shrink-0">
+              <span className="text-sm font-semibold text-slate-100">
+                Search &amp; tools
+              </span>
+              <button
+                type="button"
+                onClick={() => setMobileToolsOpen(false)}
+                className="text-slate-300 hover:text-slate-100 px-2 py-1 text-sm rounded border border-slate-600"
+              >
+                ✕ Close
+              </button>
+            </div>
             {/* Geocode Management */}
             <div className="p-3 sm:p-4 border-b border-slate-700 order-2 md:order-none shrink-0">
               <div className="text-sm text-slate-400 mb-2">
@@ -1446,8 +1480,8 @@ export default function MapPage() {
             </div>
           </div>
 
-          {/* Map — top on mobile, fills right column on md+ */}
-          <div className="relative order-1 md:order-2 w-full min-w-0 shrink-0 h-[min(42vh,360px)] min-h-[280px] max-h-[420px] md:max-h-none md:h-auto md:flex-1 md:min-h-0 border-b md:border-b-0 md:border-l border-slate-700">
+          {/* Map — fills the screen on mobile (tools overlay on top), right column on md+ */}
+          <div className="relative w-full min-w-0 flex-1 min-h-[280px] md:min-h-0 md:border-l border-slate-700">
             {routeMoveAwaitingTargetFromIndex !== null && (
               <div className="absolute left-2 right-2 top-2 z-[2] flex flex-wrap items-center justify-center gap-2 rounded-lg border border-cyan-600/60 bg-slate-950/95 px-2 py-2 text-center shadow-lg sm:left-4 sm:right-4">
                 <p className="text-xs text-cyan-100">
