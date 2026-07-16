@@ -814,6 +814,10 @@ export default function RoutesPage() {
             <p className="text-xs text-slate-400 mb-3">
               Use placeholders like{" "}
               <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{firstName}"}
+              </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
                 {"{displayName}"}
               </code>
               ,{" "}
@@ -835,6 +839,10 @@ export default function RoutesPage() {
             />
             <div className="mt-2 text-xs text-slate-400">
               Available variables:{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{firstName}"}
+              </code>
+              ,{" "}
               <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
                 {"{displayName}"}
               </code>

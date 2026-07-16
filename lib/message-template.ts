@@ -3,6 +3,7 @@ import { format, parse, differenceInCalendarDays } from "date-fns";
 
 export type TemplateVariables = {
   displayName: string;
+  firstName: string;
   fullAddress: string;
   city: string;
   state: string;
@@ -47,6 +48,8 @@ export function buildTemplateVariables(customer: Customer): TemplateVariables {
 
   return {
     displayName: customer.displayName || "",
+    // Falls back to display name so "Hey {firstName}," never comes out empty
+    firstName: customer.firstName?.trim() || customer.displayName || "",
     fullAddress: customer.fullAddress || "",
     city: customer.city || "",
     state: customer.state || "",
