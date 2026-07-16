@@ -20,6 +20,8 @@ type RouteHistoryState = {
     routeStart?: RouteStartPoint | null;
   }) => string;
   removeSavedRoute: (id: string) => void;
+  /** Reschedule a saved route to a different day (yyyy-MM-dd) */
+  updateSavedRouteDate: (id: string, routeDate: string) => void;
 };
 
 function cloneStops(stops: ManualRouteStop[]): ManualRouteStop[] {
@@ -60,6 +62,12 @@ export const useRouteHistoryStore = create<RouteHistoryState>()(
       removeSavedRoute: (id) =>
         set((state) => ({
           savedRoutes: state.savedRoutes.filter((r) => r.id !== id),
+        })),
+      updateSavedRouteDate: (id, routeDate) =>
+        set((state) => ({
+          savedRoutes: state.savedRoutes.map((r) =>
+            r.id === id ? { ...r, routeDate } : r
+          ),
         })),
     }),
     { name: STORAGE_KEY }
