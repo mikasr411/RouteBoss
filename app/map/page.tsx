@@ -7,7 +7,13 @@ import { formatDate, isCustomerDue } from "@/lib/utils";
 import { geocodeAddress, hasCoordinates } from "@/lib/geocoding";
 import MapLoader from "@/components/map/MapLoader";
 import WeekRoutePlanner from "@/components/WeekRoutePlanner";
-import { applySavedRouteToStore } from "@/lib/apply-saved-route";
+import {
+  applySavedRouteToStore,
+  clearLiveRouteSelection,
+  snapshotLiveRoute,
+  liveRouteHasStops,
+} from "@/lib/apply-saved-route";
+import { useRouteHistoryStore } from "@/store/route-history-store";
 import type { SavedRoute } from "@/types/saved-route";
 import {
   GoogleMap,
@@ -18,6 +24,10 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { ManualRouteStop } from "@/types/manual-stop";
 import { routeVisitLetter } from "@/lib/route-visit-letter";
+import { format, startOfWeek, addDays, addWeeks, isToday, parse } from "date-fns";
+
+const WORKING_DAY_KEY = "routeboss:mapWorkingDay";
+const WORKING_ROUTE_KEY = "routeboss:mapWorkingRouteId";
 
 const mapContainerStyle = {
   width: "100%",
@@ -144,6 +154,15 @@ export default function MapPage() {
   const [weekPlannerOpen, setWeekPlannerOpen] = useState(false);
   /** Phone layout: sidebar tools live in a dropdown overlay so the map fills the screen */
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  /** Day you're building / editing on the map (yyyy-MM-dd) */
+  const [workingDay, setWorkingDay] = useState<string>(() =>
+    format(new Date(), "yyyy-MM-dd")
+  );
+  /** Saved route currently tied to this map session (updated on Save) */
+  const [workingRouteId, setWorkingRouteId] = useState<string | null>(null);
+  const [dayNotice, setDayNotice] = useState<string | null>(null);
+  const [weekChipAnchor, setWeekChipAnchor] = useState<Date>(() => new Date());
+  const { savedRoutes, saveRoute, updateSavedRoute } = useRouteHistoryStore();
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
   const [geocodingProgress, setGeocodingProgress] = useState<{
     current: number;
@@ -166,7 +185,28 @@ export default function MapPage() {
       setRouteOnlyView(true);
       sessionStorage.removeItem("routeboss:mapRouteOnly");
     }
+    const savedDay = sessionStorage.getItem(WORKING_DAY_KEY);
+    if (savedDay && /^\d{4}-\d{2}-\d{2}$/.test(savedDay)) {
+      setWorkingDay(savedDay);
+      try {
+        setWeekChipAnchor(parse(savedDay, "yyyy-MM-dd", new Date()));
+      } catch {
+        // keep default
+      }
+    }
+    const savedRouteId = sessionStorage.getItem(WORKING_ROUTE_KEY);
+    if (savedRouteId) setWorkingRouteId(savedRouteId);
   }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem(WORKING_DAY_KEY, workingDay);
+  }, [workingDay]);
+
+  useEffect(() => {
+    if (workingRouteId) sessionStorage.setItem(WORKING_ROUTE_KEY, workingRouteId);
+    else sessionStorage.removeItem(WORKING_ROUTE_KEY);
+  }, [workingRouteId]);
+
   const [isOptimizingRoute, setIsOptimizingRoute] = useState(false);
   /** After choosing “tap another route pin”, next route marker click sets position. */
   const [routeMoveAwaitingTargetFromIndex, setRouteMoveAwaitingTargetFromIndex] =
@@ -657,13 +697,157 @@ export default function MapPage() {
     await locateAndSaveStart(startAddressInput);
   }, [locateAndSaveStart, startAddressInput]);
 
-  /** Load a saved route from the week planner and focus the map on it */
-  const handleUseSavedRoute = useCallback((route: SavedRoute) => {
-    if (!applySavedRouteToStore(route)) return;
-    setWeekPlannerOpen(false);
-    setRouteOnlyView(true);
-    setSelectedMarkerId(null);
+  const showDayNotice = useCallback((message: string) => {
+    setDayNotice(message);
+    window.setTimeout(() => setDayNotice(null), 3500);
   }, []);
+
+  const routesForWorkingDay = useMemo(() => {
+    return savedRoutes
+      .filter((r) => r.routeDate === workingDay)
+      .sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+  }, [savedRoutes, workingDay]);
+
+  const workingRoute = useMemo(() => {
+    if (workingRouteId) {
+      const match = savedRoutes.find((r) => r.id === workingRouteId);
+      if (match) return match;
+    }
+    return routesForWorkingDay[0] ?? null;
+  }, [workingRouteId, savedRoutes, routesForWorkingDay]);
+
+  const weekChipDays = useMemo(() => {
+    const start = startOfWeek(weekChipAnchor);
+    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  }, [weekChipAnchor]);
+
+  const routeCountByDate = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of savedRoutes) {
+      if (!r.routeDate) continue;
+      m.set(r.routeDate, (m.get(r.routeDate) ?? 0) + 1);
+    }
+    return m;
+  }, [savedRoutes]);
+
+  /** Persist the live map route onto the current working day */
+  const handleSaveToWorkingDay = useCallback(() => {
+    const snap = snapshotLiveRoute();
+    const stopCount = snap.customerIds.length + snap.manualStops.length;
+    if (stopCount === 0) {
+      showDayNotice("Add at least one stop before saving.");
+      return;
+    }
+
+    const dayLabel = (() => {
+      try {
+        return format(parse(workingDay, "yyyy-MM-dd", new Date()), "EEE M/d");
+      } catch {
+        return workingDay;
+      }
+    })();
+
+    const existing =
+      (workingRouteId &&
+        savedRoutes.find(
+          (r) => r.id === workingRouteId && r.routeDate === workingDay
+        )) ||
+      (routesForWorkingDay.length === 1 ? routesForWorkingDay[0] : null);
+
+    if (existing) {
+      updateSavedRoute(existing.id, {
+        routeDate: workingDay,
+        customerIds: snap.customerIds,
+        manualStops: snap.manualStops,
+        routeStopOrder: snap.routeStopOrder,
+        routeStart: snap.routeStart,
+      });
+      setWorkingRouteId(existing.id);
+      showDayNotice(
+        `Saved ${stopCount} stop${stopCount !== 1 ? "s" : ""} to ${dayLabel} (${existing.name}).`
+      );
+      return;
+    }
+
+    const id = saveRoute({
+      name: `Route ${dayLabel}`,
+      routeDate: workingDay,
+      customerIds: snap.customerIds,
+      manualStops: snap.manualStops,
+      routeStopOrder: snap.routeStopOrder,
+      routeStart: snap.routeStart,
+    });
+    setWorkingRouteId(id);
+    showDayNotice(
+      `Saved ${stopCount} stop${stopCount !== 1 ? "s" : ""} to ${dayLabel}.`
+    );
+  }, [
+    workingDay,
+    workingRouteId,
+    savedRoutes,
+    routesForWorkingDay,
+    saveRoute,
+    updateSavedRoute,
+    showDayNotice,
+  ]);
+
+  /** Switch the working day and load that day's saved route (or clear) */
+  const switchWorkingDay = useCallback(
+    (dateKey: string) => {
+      if (dateKey === workingDay) return;
+
+      const hasLive = liveRouteHasStops();
+      if (hasLive) {
+        const choice = window.confirm(
+          `Switch to ${format(parse(dateKey, "yyyy-MM-dd", new Date()), "EEEE M/d")}?\n\nOK = load that day's saved route (current map route will be replaced).\nCancel = stay on this day.\n\nTip: click “Save to day” first if you want to keep today's work.`
+        );
+        if (!choice) return;
+      }
+
+      setWorkingDay(dateKey);
+      const dayRoutes = savedRoutes
+        .filter((r) => r.routeDate === dateKey)
+        .sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+
+      if (dayRoutes.length > 0) {
+        const route = dayRoutes[0];
+        applySavedRouteToStore(route, { confirm: false });
+        setWorkingRouteId(route.id);
+        setRouteOnlyView(true);
+        setSelectedMarkerId(null);
+        showDayNotice(
+          `Loaded “${route.name}” for ${format(parse(dateKey, "yyyy-MM-dd", new Date()), "EEE M/d")}.`
+        );
+      } else {
+        clearLiveRouteSelection();
+        setWorkingRouteId(null);
+        setSelectedMarkerId(null);
+        showDayNotice(
+          `Switched to ${format(parse(dateKey, "yyyy-MM-dd", new Date()), "EEE M/d")} — no saved route yet. Add stops and save.`
+        );
+      }
+    },
+    [workingDay, savedRoutes, showDayNotice]
+  );
+
+  /** Load a saved route from the week planner and focus the map on it */
+  const handleUseSavedRoute = useCallback(
+    (route: SavedRoute) => {
+      if (!applySavedRouteToStore(route)) return;
+      setWorkingDay(route.routeDate);
+      setWorkingRouteId(route.id);
+      try {
+        setWeekChipAnchor(parse(route.routeDate, "yyyy-MM-dd", new Date()));
+      } catch {
+        // keep anchor
+      }
+      setWeekPlannerOpen(false);
+      setRouteOnlyView(true);
+      setSelectedMarkerId(null);
+      showDayNotice(`Working on ${route.routeDate} — “${route.name}”.`);
+    },
+    [showDayNotice]
+  );
 
   const removeStopFromRoute = useCallback(
     (kind: "customer" | "manual", id: string) => {
@@ -935,6 +1119,130 @@ export default function MapPage() {
               {routeStart ? " + starting point" : ""} only.
             </p>
           )}
+
+          {/* Working day: pick a day, save this map route to it, switch days to load */}
+          <div className="mt-3 rounded-lg border border-slate-600 bg-slate-900/50 p-2 sm:p-3">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Working day
+              </span>
+              <button
+                type="button"
+                onClick={() => setWeekChipAnchor((d) => addWeeks(d, -1))}
+                className="border border-slate-600 text-slate-300 hover:bg-slate-700 px-2 py-0.5 rounded text-xs"
+                aria-label="Previous week"
+              >
+                ◀
+              </button>
+              <span className="text-xs text-slate-300">
+                {format(weekChipDays[0], "MMM d")} –{" "}
+                {format(weekChipDays[6], "MMM d")}
+              </span>
+              <button
+                type="button"
+                onClick={() => setWeekChipAnchor((d) => addWeeks(d, 1))}
+                className="border border-slate-600 text-slate-300 hover:bg-slate-700 px-2 py-0.5 rounded text-xs"
+                aria-label="Next week"
+              >
+                ▶
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const today = new Date();
+                  setWeekChipAnchor(today);
+                  switchWorkingDay(format(today, "yyyy-MM-dd"));
+                }}
+                className="border border-slate-600 text-slate-300 hover:bg-slate-700 px-2 py-0.5 rounded text-xs"
+              >
+                Today
+              </button>
+              {dayNotice && (
+                <span className="text-xs text-green-400 sm:ml-auto">
+                  {dayNotice}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {weekChipDays.map((day) => {
+                const dateKey = format(day, "yyyy-MM-dd");
+                const active = dateKey === workingDay;
+                const count = routeCountByDate.get(dateKey) ?? 0;
+                const today = isToday(day);
+                return (
+                  <button
+                    key={dateKey}
+                    type="button"
+                    onClick={() => switchWorkingDay(dateKey)}
+                    className={`min-w-[2.75rem] flex-1 sm:flex-none rounded-md px-2 py-1.5 text-center transition-colors border ${
+                      active
+                        ? "bg-amber-600 border-amber-500 text-white"
+                        : today
+                          ? "bg-blue-950/50 border-blue-600 text-blue-100 hover:bg-blue-900/50"
+                          : "bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700"
+                    }`}
+                    title={
+                      count > 0
+                        ? `${count} saved route${count !== 1 ? "s" : ""}`
+                        : "No saved route yet"
+                    }
+                  >
+                    <div className="text-[10px] font-semibold uppercase opacity-90">
+                      {format(day, "EEE")}
+                    </div>
+                    <div className="text-sm font-bold tabular-nums leading-tight">
+                      {format(day, "d")}
+                    </div>
+                    <div
+                      className={`text-[9px] mt-0.5 ${
+                        count > 0 ? "opacity-90" : "opacity-40"
+                      }`}
+                    >
+                      {count > 0 ? `${count}` : "·"}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSaveToWorkingDay}
+                disabled={routeStopOrder.length === 0 && !liveRouteHasStops()}
+                className="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-3 py-2 rounded text-sm font-semibold transition-colors w-full sm:w-auto"
+              >
+                Save to{" "}
+                {(() => {
+                  try {
+                    return format(
+                      parse(workingDay, "yyyy-MM-dd", new Date()),
+                      "EEE M/d"
+                    );
+                  } catch {
+                    return "day";
+                  }
+                })()}
+              </button>
+              <p className="text-[11px] text-slate-400 min-w-0">
+                {workingRoute ? (
+                  <>
+                    Editing{" "}
+                    <span className="text-slate-200">{workingRoute.name}</span>
+                    {" · "}
+                    {workingRoute.customerIds.length +
+                      workingRoute.manualStops.length}{" "}
+                    saved stops. Switch days to load another; save to keep
+                    changes.
+                  </>
+                ) : (
+                  <>
+                    No saved route for this day yet. Build stops on the map,
+                    then save. Tap another day to switch.
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
 
           {/* Week planner dropdown */}
           {weekPlannerOpen && (

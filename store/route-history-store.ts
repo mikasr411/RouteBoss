@@ -27,6 +27,18 @@ type RouteHistoryState = {
     id: string,
     routeStopOrder: RouteStopKey[]
   ) => void;
+  /** Replace a saved route's snapshot (e.g. re-save after editing on the Map) */
+  updateSavedRoute: (
+    id: string,
+    patch: {
+      name?: string;
+      routeDate?: string;
+      customerIds: string[];
+      manualStops: ManualRouteStop[];
+      routeStopOrder?: RouteStopKey[];
+      routeStart?: RouteStartPoint | null;
+    }
+  ) => void;
 };
 
 function cloneStops(stops: ManualRouteStop[]): ManualRouteStop[] {
@@ -81,6 +93,32 @@ export const useRouteHistoryStore = create<RouteHistoryState>()(
               ? { ...r, routeStopOrder: routeStopOrder.map((k) => ({ ...k })) }
               : r
           ),
+        })),
+      updateSavedRoute: (id, patch) =>
+        set((state) => ({
+          savedRoutes: state.savedRoutes.map((r) => {
+            if (r.id !== id) return r;
+            return {
+              ...r,
+              savedAt: new Date().toISOString(),
+              ...(patch.name !== undefined
+                ? { name: patch.name.trim() || r.name }
+                : {}),
+              ...(patch.routeDate !== undefined
+                ? { routeDate: patch.routeDate }
+                : {}),
+              customerIds: [...patch.customerIds],
+              manualStops: cloneStops(patch.manualStops),
+              ...(patch.routeStopOrder !== undefined
+                ? {
+                    routeStopOrder: patch.routeStopOrder.map((k) => ({ ...k })),
+                  }
+                : {}),
+              ...(patch.routeStart !== undefined
+                ? { routeStart: patch.routeStart }
+                : {}),
+            };
+          }),
         })),
     }),
     { name: STORAGE_KEY }
