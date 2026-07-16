@@ -24,6 +24,7 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { ManualRouteStop } from "@/types/manual-stop";
 import { routeVisitLetter } from "@/lib/route-visit-letter";
+import { extractRouteDriveStats } from "@/lib/route-stats";
 import { format, startOfWeek, addDays, addWeeks, isToday, parse } from "date-fns";
 
 const WORKING_DAY_KEY = "routeboss:mapWorkingDay";
@@ -510,6 +511,26 @@ export default function MapPage() {
       setDirectionsError(null);
     }
   }, [orderedRoutePoints.length, calculateRoute]);
+
+  const driveStats = useMemo(
+    () => extractRouteDriveStats(directionsResult),
+    [directionsResult]
+  );
+
+  /**
+   * Drive leg into each stop on the route list.
+   * With a starting point: legs[i] is S→A, A→B, …
+   * Without: legs[i] is A→B, B→C, … (nothing before first stop).
+   */
+  const driveIntoStop = useCallback(
+    (stopIndex: number) => {
+      if (!driveStats) return null;
+      const legIndex = routeStart ? stopIndex : stopIndex - 1;
+      if (legIndex < 0 || legIndex >= driveStats.legs.length) return null;
+      return driveStats.legs[legIndex];
+    },
+    [driveStats, routeStart]
+  );
 
   // Pan to customer
   const panToCustomer = useCallback(
@@ -1251,6 +1272,32 @@ export default function MapPage() {
                 )}
               </p>
             </div>
+            {driveStats ? (
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-slate-600/80 bg-slate-800/80 px-2.5 py-2 text-xs">
+                <span className="font-semibold uppercase tracking-wide text-slate-400">
+                  Route stats
+                </span>
+                <span className="text-slate-100">
+                  <span className="text-slate-400">Drive </span>
+                  {driveStats.totalDurationText}
+                </span>
+                <span className="text-slate-600">·</span>
+                <span className="text-slate-100">
+                  <span className="text-slate-400">Mileage </span>
+                  {driveStats.totalDistanceText}
+                </span>
+                <span className="text-slate-500 text-[11px]">
+                  ({driveStats.legs.length} leg
+                  {driveStats.legs.length !== 1 ? "s" : ""}
+                  {routeStart ? " from start" : ""})
+                </span>
+              </div>
+            ) : orderedRoutePoints.length >= 2 ? (
+              <p className="mt-2 text-[11px] text-slate-500">
+                Route stats appear once directions load (need 2+ stops
+                {routeStart ? " or start + stops" : ""}).
+              </p>
+            ) : null}
           </div>
 
           {/* Week planner dropdown */}
@@ -1554,8 +1601,8 @@ export default function MapPage() {
                 Visit order is <strong className="text-slate-300">A</strong>,{" "}
                 <strong className="text-slate-300">B</strong>,{" "}
                 <strong className="text-slate-300">C</strong>… on map pins and on
-                the Routes page. Starting point (if set) shows{" "}
-                <strong className="text-slate-300">S</strong>. Drag ⋮⋮ to reorder.
+                the Routes page. Drive time and miles between stops show below
+                once directions load. Drag ⋮⋮ to reorder.
               </p>
               <button
                 type="button"
@@ -1578,10 +1625,29 @@ export default function MapPage() {
                   address above.
                 </p>
               ) : (
-                <ul className="space-y-1.5 pr-0.5" onDragEnd={endRouteDrag}>
-                  {routeStopOrder.map((key, index) => (
-                    <li
-                      key={`${key.kind}:${key.id}`}
+                <ul className="space-y-1 pr-0.5" onDragEnd={endRouteDrag}>
+                  {routeStopOrder.map((key, index) => {
+                    const inbound = driveIntoStop(index);
+                    return (
+                    <li key={`${key.kind}:${key.id}`} className="space-y-1">
+                      {inbound && (
+                        <div className="flex items-center gap-1.5 px-2 text-[11px] text-cyan-300/90">
+                          <span className="text-slate-500" aria-hidden>
+                            ↓
+                          </span>
+                          <span>
+                            {inbound.durationText}
+                            <span className="text-slate-500"> · </span>
+                            {inbound.distanceText}
+                          </span>
+                          <span className="text-slate-600">
+                            {index === 0 && routeStart
+                              ? "from start"
+                              : `from ${routeVisitLetter(index - 1)}`}
+                          </span>
+                        </div>
+                      )}
+                    <div
                       className={`flex items-center gap-1.5 rounded px-2 py-1.5 text-xs transition-colors w-full ${
                         routeDragOverIndex === index
                           ? "bg-cyan-900/50 ring-1 ring-cyan-500/70"
@@ -1659,8 +1725,10 @@ export default function MapPage() {
                       >
                         ✕
                       </button>
+                    </div>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
             </div>
