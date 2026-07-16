@@ -10,7 +10,38 @@ import {
   isToday,
 } from "date-fns";
 import { useRouteHistoryStore } from "@/store/route-history-store";
+import { useCustomerStore } from "@/store/customer-store";
+import { routeVisitLetter } from "@/lib/route-visit-letter";
 import type { SavedRoute } from "@/types/saved-route";
+import type { RouteStopKey } from "@/types/route-plan";
+
+/**
+ * Visit order for a saved route: stored order filtered to stops that still
+ * exist on the route, with any unlisted stops appended (same rules as
+ * loading the route).
+ */
+function normalizedStopOrder(route: SavedRoute): RouteStopKey[] {
+  const customerIdSet = new Set(route.customerIds);
+  const manualIdSet = new Set(route.manualStops.map((s) => s.id));
+  const order: RouteStopKey[] =
+    route.routeStopOrder?.filter((k) =>
+      k.kind === "customer" ? customerIdSet.has(k.id) : manualIdSet.has(k.id)
+    ) ?? [];
+  const seen = new Set(order.map((k) => `${k.kind}:${k.id}`));
+  for (const id of route.customerIds) {
+    if (!seen.has(`customer:${id}`)) {
+      order.push({ kind: "customer", id });
+      seen.add(`customer:${id}`);
+    }
+  }
+  for (const s of route.manualStops) {
+    if (!seen.has(`manual:${s.id}`)) {
+      order.push({ kind: "manual", id: s.id });
+      seen.add(`manual:${s.id}`);
+    }
+  }
+  return order;
+}
 
 type Props = {
   /** Called after the user picks a route to load (e.g. apply + navigate) */
@@ -22,14 +53,24 @@ type Props = {
  * date. Routes can be dragged onto another day (or moved with ◀ ▶).
  */
 export default function WeekRoutePlanner({ onUseRoute }: Props) {
-  const { savedRoutes, removeSavedRoute, updateSavedRouteDate } =
-    useRouteHistoryStore();
+  const {
+    savedRoutes,
+    removeSavedRoute,
+    updateSavedRouteDate,
+    updateSavedRouteStopOrder,
+  } = useRouteHistoryStore();
+  const customers = useCustomerStore((s) => s.customers);
   const [weekAnchor, setWeekAnchor] = useState<Date>(() => new Date());
   const [dragRouteId, setDragRouteId] = useState<string | null>(null);
   const [dragOverDay, setDragOverDay] = useState<string | null>(null);
   /** Days whose route list is expanded; today starts open */
   const [expandedDays, setExpandedDays] = useState<Set<string>>(
     () => new Set([format(new Date(), "yyyy-MM-dd")])
+  );
+
+  /** Routes whose stop list is expanded */
+  const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(
+    () => new Set()
   );
 
   const toggleDay = (dateKey: string) => {
@@ -39,6 +80,33 @@ export default function WeekRoutePlanner({ onUseRoute }: Props) {
       else next.add(dateKey);
       return next;
     });
+  };
+
+  const toggleRouteStops = (routeId: string) => {
+    setExpandedRoutes((prev) => {
+      const next = new Set(prev);
+      if (next.has(routeId)) next.delete(routeId);
+      else next.add(routeId);
+      return next;
+    });
+  };
+
+  const stopLabel = (route: SavedRoute, key: RouteStopKey): string => {
+    if (key.kind === "manual") {
+      return route.manualStops.find((s) => s.id === key.id)?.label ?? "Extra stop";
+    }
+    return (
+      customers.find((c) => c.id === key.id)?.displayName ??
+      "(no longer in customer list)"
+    );
+  };
+
+  const moveStop = (route: SavedRoute, index: number, delta: -1 | 1) => {
+    const order = normalizedStopOrder(route);
+    const j = index + delta;
+    if (j < 0 || j >= order.length) return;
+    [order[index], order[j]] = [order[j], order[index]];
+    updateSavedRouteStopOrder(route.id, order);
   };
 
   const weekDays = useMemo(() => {
@@ -219,10 +287,11 @@ export default function WeekRoutePlanner({ onUseRoute }: Props) {
                           e.dataTransfer.setData("text/plain", r.id);
                         }}
                         onDragEnd={endDrag}
-                        className={`flex items-center gap-2 rounded border border-slate-600 bg-slate-900/70 px-2 py-1.5 ${
+                        className={`rounded border border-slate-600 bg-slate-900/70 px-2 py-1.5 ${
                           dragRouteId === r.id ? "opacity-50" : ""
                         }`}
                       >
+                        <div className="flex items-center gap-2">
                         <span
                           className="cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-300 select-none shrink-0 text-base leading-none"
                           title="Drag to another day"
@@ -237,9 +306,15 @@ export default function WeekRoutePlanner({ onUseRoute }: Props) {
                           >
                             {r.name}
                           </div>
-                          <div className="text-[11px] text-slate-400">
-                            {n} stop{n !== 1 ? "s" : ""}
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleRouteStops(r.id)}
+                            aria-expanded={expandedRoutes.has(r.id)}
+                            className="text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
+                          >
+                            {n} stop{n !== 1 ? "s" : ""}{" "}
+                            {expandedRoutes.has(r.id) ? "▲" : "▼"}
+                          </button>
                         </div>
                         <div className="flex gap-1 shrink-0">
                           <button
@@ -277,6 +352,54 @@ export default function WeekRoutePlanner({ onUseRoute }: Props) {
                             ✕
                           </button>
                         </div>
+                        </div>
+
+                        {/* Stops in visit order, reorderable */}
+                        {expandedRoutes.has(r.id) && (
+                          <ol className="mt-1.5 space-y-1 border-t border-slate-700 pt-1.5">
+                            {normalizedStopOrder(r).map((key, i, arr) => (
+                              <li
+                                key={`${key.kind}:${key.id}`}
+                                className="flex items-center gap-1.5"
+                              >
+                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-800 text-[10px] font-bold text-amber-300 ring-1 ring-amber-600/40 tabular-nums">
+                                  {routeVisitLetter(i)}
+                                </span>
+                                <span
+                                  className={`min-w-0 flex-1 truncate text-[11px] ${
+                                    key.kind === "manual"
+                                      ? "text-purple-200"
+                                      : "text-slate-200"
+                                  }`}
+                                  title={stopLabel(r, key)}
+                                >
+                                  {stopLabel(r, key)}
+                                  {key.kind === "manual" ? " (extra)" : ""}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => moveStop(r, i, -1)}
+                                  disabled={i === 0}
+                                  className="border border-slate-600 text-slate-300 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed px-1.5 py-0.5 rounded text-[11px] transition-colors shrink-0"
+                                  title="Move up"
+                                  aria-label="Move stop up"
+                                >
+                                  ↑
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveStop(r, i, 1)}
+                                  disabled={i === arr.length - 1}
+                                  className="border border-slate-600 text-slate-300 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed px-1.5 py-0.5 rounded text-[11px] transition-colors shrink-0"
+                                  title="Move down"
+                                  aria-label="Move stop down"
+                                >
+                                  ↓
+                                </button>
+                              </li>
+                            ))}
+                          </ol>
+                        )}
                       </li>
                     );
                   })}

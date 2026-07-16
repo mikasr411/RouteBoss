@@ -1275,6 +1275,26 @@ export default function MapPage() {
                       >
                         {routeVisitLetter(index)}
                       </span>
+                      {(() => {
+                        const name =
+                          key.kind === "customer"
+                            ? customers.find((c) => c.id === key.id)
+                                ?.displayName ?? "(removed customer)"
+                            : manualStops.find((s) => s.id === key.id)?.label ??
+                              "Extra stop";
+                        return (
+                          <span
+                            className={`min-w-0 flex-1 truncate ${
+                              key.kind === "manual"
+                                ? "text-purple-200"
+                                : "text-slate-200"
+                            }`}
+                            title={name}
+                          >
+                            {name}
+                          </span>
+                        );
+                      })()}
                       {key.kind === "manual" ? (
                         <span className="text-[10px] font-medium uppercase tracking-wide text-purple-300/90 shrink-0">
                           Extra
