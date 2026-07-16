@@ -6,6 +6,9 @@ import { Customer } from "@/types/customer";
 import { formatDate, isCustomerDue } from "@/lib/utils";
 import { geocodeAddress, hasCoordinates } from "@/lib/geocoding";
 import MapLoader from "@/components/map/MapLoader";
+import WeekRoutePlanner from "@/components/WeekRoutePlanner";
+import { applySavedRouteToStore } from "@/lib/apply-saved-route";
+import type { SavedRoute } from "@/types/saved-route";
 import {
   GoogleMap,
   Marker,
@@ -138,6 +141,7 @@ export default function MapPage() {
   const [selectedFrequency, setSelectedFrequency] = useState<string>("all");
   const [dueOnly, setDueOnly] = useState(false);
   const [routeOnlyView, setRouteOnlyView] = useState(false);
+  const [weekPlannerOpen, setWeekPlannerOpen] = useState(false);
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
   const [geocodingProgress, setGeocodingProgress] = useState<{
     current: number;
@@ -648,6 +652,14 @@ export default function MapPage() {
     await locateAndSaveStart(startAddressInput);
   }, [locateAndSaveStart, startAddressInput]);
 
+  /** Load a saved route from the week planner and focus the map on it */
+  const handleUseSavedRoute = useCallback((route: SavedRoute) => {
+    if (!applySavedRouteToStore(route)) return;
+    setWeekPlannerOpen(false);
+    setRouteOnlyView(true);
+    setSelectedMarkerId(null);
+  }, []);
+
   const removeStopFromRoute = useCallback(
     (kind: "customer" | "manual", id: string) => {
       if (kind === "customer") {
@@ -851,38 +863,52 @@ export default function MapPage() {
     <MapLoader>
       <div className="flex flex-col h-[calc(100dvh-4.5rem)] sm:h-[calc(100dvh-4rem)] min-h-[300px] w-full max-w-full min-w-0 overflow-hidden bg-slate-900">
         {/* Header */}
-        <div className="shrink-0 bg-slate-800 border-b border-slate-700 px-3 sm:px-4 py-2 sm:py-3">
+        <div className="relative shrink-0 bg-slate-800 border-b border-slate-700 px-3 sm:px-4 py-2 sm:py-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="text-xl sm:text-2xl font-bold text-slate-100">
               Map View
             </h1>
-            <div
-              className="inline-flex rounded-lg border border-slate-600 overflow-hidden text-sm shrink-0"
-              role="group"
-              aria-label="Map display mode"
-            >
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               <button
                 type="button"
-                onClick={() => setRouteOnlyView(false)}
-                className={`px-3 py-1.5 font-medium transition-colors ${
-                  !routeOnlyView
-                    ? "bg-blue-600 text-white"
-                    : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                onClick={() => setWeekPlannerOpen((v) => !v)}
+                aria-expanded={weekPlannerOpen}
+                className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                  weekPlannerOpen
+                    ? "bg-amber-600 border-amber-500 text-white"
+                    : "bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600"
                 }`}
               >
-                All customers
+                Week planner {weekPlannerOpen ? "▲" : "▼"}
               </button>
-              <button
-                type="button"
-                onClick={() => setRouteOnlyView(true)}
-                className={`px-3 py-1.5 font-medium transition-colors border-l border-slate-600 ${
-                  routeOnlyView
-                    ? "bg-emerald-600 text-white"
-                    : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-                }`}
+              <div
+                className="inline-flex rounded-lg border border-slate-600 overflow-hidden text-sm"
+                role="group"
+                aria-label="Map display mode"
               >
-                Route only
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setRouteOnlyView(false)}
+                  className={`px-3 py-1.5 font-medium transition-colors ${
+                    !routeOnlyView
+                      ? "bg-blue-600 text-white"
+                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  All customers
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRouteOnlyView(true)}
+                  className={`px-3 py-1.5 font-medium transition-colors border-l border-slate-600 ${
+                    routeOnlyView
+                      ? "bg-emerald-600 text-white"
+                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  Route only
+                </button>
+              </div>
             </div>
           </div>
           {routeOnlyView && (
@@ -891,6 +917,26 @@ export default function MapPage() {
               {routeStopOrder.length !== 1 ? "s" : ""}
               {routeStart ? " + starting point" : ""} only.
             </p>
+          )}
+
+          {/* Week planner dropdown */}
+          {weekPlannerOpen && (
+            <div className="absolute right-2 sm:right-4 top-full z-30 mt-1 w-[min(28rem,calc(100vw-1rem))] max-h-[65vh] overflow-y-auto rounded-lg border border-slate-600 bg-slate-800 shadow-2xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-sm font-semibold text-slate-100">
+                  Week planner
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setWeekPlannerOpen(false)}
+                  className="text-slate-400 hover:text-slate-200 text-sm px-1"
+                  aria-label="Close week planner"
+                >
+                  ✕
+                </button>
+              </div>
+              <WeekRoutePlanner onUseRoute={handleUseSavedRoute} />
+            </div>
           )}
         </div>
 

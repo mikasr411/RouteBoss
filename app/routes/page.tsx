@@ -3,14 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useCustomerStore } from "@/store/customer-store";
 import { formatDate } from "@/lib/utils";
-import {
-  format,
-  parse,
-  startOfWeek,
-  addDays,
-  addWeeks,
-  isToday,
-} from "date-fns";
+import { format } from "date-fns";
 import {
   DEFAULT_TEMPLATE,
   LOST_AND_FOUND_TEMPLATE,
@@ -21,7 +14,9 @@ import {
   templateForPreset,
 } from "@/lib/message-template";
 import PhoneContactLinks from "@/components/PhoneContactLinks";
+import WeekRoutePlanner from "@/components/WeekRoutePlanner";
 import { useRouteHistoryStore } from "@/store/route-history-store";
+import { applySavedRouteToStore } from "@/lib/apply-saved-route";
 import type { SavedRoute } from "@/types/saved-route";
 import type { Customer } from "@/types/customer";
 import type { ManualRouteStop } from "@/types/manual-stop";
@@ -37,8 +32,7 @@ export default function RoutesPage() {
     setManualStops,
     routeStopOrder,
   } = useCustomerStore();
-  const { savedRoutes, saveRoute, removeSavedRoute, updateSavedRouteDate } =
-    useRouteHistoryStore();
+  const { savedRoutes, saveRoute, removeSavedRoute } = useRouteHistoryStore();
   const [routeName, setRouteName] = useState(
     `Route ${format(new Date(), "MMM d, yyyy")}`
   );
@@ -55,8 +49,6 @@ export default function RoutesPage() {
 
   // Saved routes: flat list or week planner
   const [historyView, setHistoryView] = useState<"week" | "list">("week");
-  /** Any date inside the displayed week */
-  const [weekAnchor, setWeekAnchor] = useState<Date>(() => new Date());
 
   useEffect(() => {
     const saved = localStorage.getItem("routeboss:historyView");
@@ -294,63 +286,7 @@ export default function RoutesPage() {
   };
 
   const applySavedRoute = (route: SavedRoute) => {
-    const state = useCustomerStore.getState();
-    const {
-      customers: all,
-      updateCustomer: patch,
-      setManualStops: setManual,
-      setRouteStopOrder,
-      setRouteStart,
-      clearRouteStart,
-    } = state;
-    const hasCurrent =
-      all.some((c) => c.isSelectedForRoute) || state.manualStops.length > 0;
-    if (
-      hasCurrent &&
-      !confirm(
-        "Replace your current route with this saved one? Your current selections and extra stops will be cleared first."
-      )
-    ) {
-      return;
-    }
-    all.forEach((c) => {
-      if (c.isSelectedForRoute) patch(c.id, { isSelectedForRoute: false });
-    });
-    route.customerIds.forEach((id) => {
-      if (all.some((c) => c.id === id)) {
-        patch(id, { isSelectedForRoute: true });
-      }
-    });
-    setManual(route.manualStops.map((s) => ({ ...s })));
-
-    const customerIdSet = new Set(route.customerIds);
-    const manualIdSet = new Set(route.manualStops.map((s) => s.id));
-    let order =
-      route.routeStopOrder?.filter((k) =>
-        k.kind === "customer"
-          ? customerIdSet.has(k.id)
-          : manualIdSet.has(k.id)
-      ) ?? [];
-    const inOrder = new Set(order.map((k) => `${k.kind}:${k.id}`));
-    for (const id of route.customerIds) {
-      if (all.some((c) => c.id === id) && !inOrder.has(`customer:${id}`)) {
-        order.push({ kind: "customer", id });
-        inOrder.add(`customer:${id}`);
-      }
-    }
-    for (const s of route.manualStops) {
-      if (!inOrder.has(`manual:${s.id}`)) {
-        order.push({ kind: "manual", id: s.id });
-        inOrder.add(`manual:${s.id}`);
-      }
-    }
-    setRouteStopOrder(order);
-
-    if (route.routeStart !== undefined) {
-      if (route.routeStart) setRouteStart({ ...route.routeStart });
-      else clearRouteStart();
-    }
-
+    if (!applySavedRouteToStore(route)) return;
     setRouteName(route.name);
     setRouteDate(route.routeDate);
     setHistoryNotice(`Loaded “${route.name}”.`);
@@ -360,44 +296,6 @@ export default function RoutesPage() {
   const handleDeleteSavedRoute = (id: string, label: string) => {
     if (confirm(`Remove “${label}” from saved history?`)) {
       removeSavedRoute(id);
-    }
-  };
-
-  /** Sunday–Saturday days for the displayed week */
-  const weekDays = useMemo(() => {
-    const start = startOfWeek(weekAnchor);
-    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  }, [weekAnchor]);
-
-  /** Saved routes keyed by routeDate (yyyy-MM-dd), oldest saved first within a day */
-  const savedRoutesByDate = useMemo(() => {
-    const m = new Map<string, SavedRoute[]>();
-    for (const r of savedRoutes) {
-      if (!r.routeDate) continue;
-      const list = m.get(r.routeDate) ?? [];
-      list.push(r);
-      m.set(r.routeDate, list);
-    }
-    for (const list of m.values()) {
-      list.sort((a, b) => a.savedAt.localeCompare(b.savedAt));
-    }
-    return m;
-  }, [savedRoutes]);
-
-  const routesInDisplayedWeek = useMemo(() => {
-    return weekDays.reduce(
-      (n, d) => n + (savedRoutesByDate.get(format(d, "yyyy-MM-dd"))?.length ?? 0),
-      0
-    );
-  }, [weekDays, savedRoutesByDate]);
-
-  const shiftSavedRouteDate = (route: SavedRoute, deltaDays: number) => {
-    try {
-      const current = parse(route.routeDate, "yyyy-MM-dd", new Date());
-      if (isNaN(current.getTime())) return;
-      updateSavedRouteDate(route.id, format(addDays(current, deltaDays), "yyyy-MM-dd"));
-    } catch {
-      // Unparseable legacy date — leave it alone
     }
   };
 
@@ -521,140 +419,7 @@ export default function RoutesPage() {
             </div>
           </div>
           {historyView === "week" ? (
-            <div>
-              {/* Week navigation */}
-              <div className="flex flex-wrap items-center gap-2 mb-3">
-                <button
-                  type="button"
-                  onClick={() => setWeekAnchor((d) => addWeeks(d, -1))}
-                  className="border border-slate-500 text-slate-200 hover:bg-slate-600 px-3 py-1.5 rounded text-sm transition-colors"
-                  aria-label="Previous week"
-                >
-                  ◀
-                </button>
-                <span className="text-sm font-semibold text-slate-100">
-                  {format(weekDays[0], "MMM d")} – {format(weekDays[6], "MMM d, yyyy")}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setWeekAnchor((d) => addWeeks(d, 1))}
-                  className="border border-slate-500 text-slate-200 hover:bg-slate-600 px-3 py-1.5 rounded text-sm transition-colors"
-                  aria-label="Next week"
-                >
-                  ▶
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setWeekAnchor(new Date())}
-                  className="border border-slate-500 text-slate-200 hover:bg-slate-600 px-3 py-1.5 rounded text-sm transition-colors"
-                >
-                  This week
-                </button>
-                <span className="text-xs text-slate-400">
-                  {routesInDisplayedWeek} route
-                  {routesInDisplayedWeek !== 1 ? "s" : ""} this week
-                  {savedRoutes.length > routesInDisplayedWeek
-                    ? ` · ${savedRoutes.length - routesInDisplayedWeek} on other dates (see List)`
-                    : ""}
-                </span>
-              </div>
-
-              {/* 7-day grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2">
-                {weekDays.map((day) => {
-                  const dateKey = format(day, "yyyy-MM-dd");
-                  const dayRoutes = savedRoutesByDate.get(dateKey) ?? [];
-                  const today = isToday(day);
-                  return (
-                    <div
-                      key={dateKey}
-                      className={`rounded border p-2 min-h-[5.5rem] flex flex-col gap-2 ${
-                        today
-                          ? "border-blue-500 bg-blue-950/30"
-                          : "border-slate-600 bg-slate-800/70"
-                      }`}
-                    >
-                      <div
-                        className={`text-xs font-semibold ${
-                          today ? "text-blue-300" : "text-slate-300"
-                        }`}
-                      >
-                        {format(day, "EEE")}{" "}
-                        <span className={today ? "text-blue-200" : "text-slate-400"}>
-                          {format(day, "M/d")}
-                        </span>
-                        {today ? " · Today" : ""}
-                      </div>
-                      {dayRoutes.length === 0 ? (
-                        <div className="text-[11px] text-slate-600">No routes</div>
-                      ) : (
-                        dayRoutes.map((r) => {
-                          const n = r.customerIds.length + r.manualStops.length;
-                          return (
-                            <div
-                              key={r.id}
-                              className="rounded border border-slate-600 bg-slate-900/70 p-2 space-y-1.5"
-                            >
-                              <div
-                                className="text-xs font-medium text-slate-100 break-words"
-                                title={r.name}
-                              >
-                                {r.name}
-                              </div>
-                              <div className="text-[11px] text-slate-400">
-                                {n} stop{n !== 1 ? "s" : ""}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => applySavedRoute(r)}
-                                className="w-full bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-[11px] font-medium transition-colors"
-                              >
-                                Use
-                              </button>
-                              <div className="flex gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => shiftSavedRouteDate(r, -1)}
-                                  className="flex-1 border border-slate-600 text-slate-300 hover:bg-slate-700 px-1 py-0.5 rounded text-[11px] transition-colors"
-                                  title="Move one day earlier"
-                                  aria-label="Move one day earlier"
-                                >
-                                  ◀
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => shiftSavedRouteDate(r, 1)}
-                                  className="flex-1 border border-slate-600 text-slate-300 hover:bg-slate-700 px-1 py-0.5 rounded text-[11px] transition-colors"
-                                  title="Move one day later"
-                                  aria-label="Move one day later"
-                                >
-                                  ▶
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteSavedRoute(r.id, r.name)}
-                                  className="flex-1 border border-red-800/60 text-red-300 hover:bg-red-950/50 px-1 py-0.5 rounded text-[11px] transition-colors"
-                                  title="Delete this saved route"
-                                  aria-label="Delete this saved route"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {savedRoutes.length === 0 && (
-                <p className="text-sm text-slate-500 mt-3">
-                  No saved routes yet. Build a route and click save — it will show
-                  up on its route date here.
-                </p>
-              )}
-            </div>
+            <WeekRoutePlanner onUseRoute={applySavedRoute} />
           ) : savedRoutes.length === 0 ? (
             <p className="text-sm text-slate-500">
               No saved routes yet. Build a route and click save.
