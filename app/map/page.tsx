@@ -1090,7 +1090,12 @@ export default function MapPage() {
             <div className="flex flex-wrap items-center gap-2 shrink-0">
               <button
                 type="button"
-                onClick={() => setMobileToolsOpen((v) => !v)}
+                onClick={() => {
+                  setMobileToolsOpen((v) => {
+                    if (!v) setWeekPlannerOpen(false);
+                    return !v;
+                  });
+                }}
                 aria-expanded={mobileToolsOpen}
                 className={`md:hidden px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
                   mobileToolsOpen
@@ -1102,7 +1107,12 @@ export default function MapPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setWeekPlannerOpen((v) => !v)}
+                onClick={() => {
+                  setWeekPlannerOpen((v) => {
+                    if (!v) setMobileToolsOpen(false);
+                    return !v;
+                  });
+                }}
                 aria-expanded={weekPlannerOpen}
                 className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
                   weekPlannerOpen
