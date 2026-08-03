@@ -1209,20 +1209,20 @@ export default function MapPage() {
             </button>
           </div>
 
-          {/* Week planner dropdown — includes Working day controls */}
+          {/* Week planner — full-screen on mobile, dropdown on md+; includes Working day */}
           {weekPlannerOpen && (
-            <div className="absolute left-2 right-2 sm:left-auto sm:right-4 top-full z-30 mt-1 w-auto sm:w-[min(28rem,calc(100vw-1rem))] max-h-[70vh] overflow-y-auto rounded-lg border border-slate-600 bg-slate-800 shadow-2xl p-3">
-              <div className="flex items-center justify-between mb-3">
+            <div className="fixed inset-0 z-50 flex flex-col overflow-y-auto overscroll-y-contain bg-slate-800 p-3 md:absolute md:inset-auto md:left-auto md:right-4 md:top-full md:mt-1 md:z-30 md:w-[min(28rem,calc(100vw-1rem))] md:max-h-[70vh] md:rounded-lg md:border md:border-slate-600 md:shadow-2xl">
+              <div className="sticky top-0 z-10 -mx-3 -mt-3 mb-3 flex items-center justify-between border-b border-slate-700 bg-slate-800/95 px-3 py-2.5 backdrop-blur md:static md:mx-0 md:mt-0 md:mb-3 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
                 <h2 className="text-sm font-semibold text-slate-100">
                   Week planner
                 </h2>
                 <button
                   type="button"
                   onClick={() => setWeekPlannerOpen(false)}
-                  className="text-slate-400 hover:text-slate-200 text-sm px-1"
+                  className="rounded border border-slate-600 px-2 py-1 text-sm text-slate-300 hover:text-slate-100 md:border-0 md:px-1 md:text-slate-400 md:hover:text-slate-200"
                   aria-label="Close week planner"
                 >
-                  ✕
+                  ✕ Close
                 </button>
               </div>
 
@@ -1359,14 +1359,14 @@ export default function MapPage() {
         </div>
 
         <div className="relative flex flex-1 flex-col md:flex-row min-h-0 min-w-0 overflow-hidden">
-          {/* Sidebar — dropdown overlay on mobile (Tools button), left column on md+ */}
+          {/* Sidebar — full-screen on mobile (Tools), left column on md+ */}
           <div
             className={`${
               mobileToolsOpen ? "flex" : "hidden"
-            } md:flex flex-col absolute inset-0 z-20 md:static md:z-auto w-full min-w-0 md:w-80 md:max-w-[20rem] md:shrink-0 min-h-0 overflow-y-auto overscroll-y-contain bg-slate-800 md:border-r border-slate-700`}
+            } md:flex flex-col fixed inset-0 z-50 md:static md:z-auto w-full min-w-0 md:w-80 md:max-w-[20rem] md:shrink-0 min-h-0 overflow-y-auto overscroll-y-contain bg-slate-800 md:border-r border-slate-700`}
           >
             {/* Mobile close bar */}
-            <div className="md:hidden sticky top-0 z-10 flex items-center justify-between bg-slate-800/95 backdrop-blur border-b border-slate-700 px-3 py-2 shrink-0">
+            <div className="md:hidden sticky top-0 z-10 flex items-center justify-between bg-slate-800/95 backdrop-blur border-b border-slate-700 px-3 py-2.5 shrink-0">
               <span className="text-sm font-semibold text-slate-100">
                 Search &amp; tools
               </span>
