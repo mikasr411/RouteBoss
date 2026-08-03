@@ -1092,7 +1092,6 @@ export default function MapPage() {
                 type="button"
                 onClick={() => {
                   setMobileToolsOpen((v) => !v);
-                  // Free mobile viewport: close week planner + hide working-day strip
                   setWeekPlannerOpen(false);
                 }}
                 aria-expanded={mobileToolsOpen}
@@ -1116,6 +1115,7 @@ export default function MapPage() {
                     ? "bg-amber-600 border-amber-500 text-white"
                     : "bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600"
                 }`}
+                title="Working day + week routes"
               >
                 Week planner {weekPlannerOpen ? "▲" : "▼"}
               </button>
@@ -1157,135 +1157,10 @@ export default function MapPage() {
             </p>
           )}
 
-          {/* Working day: pick a day, save this map route to it, switch days to load.
-              Hidden on mobile while Tools is open so the tools panel can use the screen. */}
-          <div
-            className={`mt-3 rounded-lg border border-slate-600 bg-slate-900/50 p-2 sm:p-3 ${
-              mobileToolsOpen ? "hidden md:block" : ""
-            }`}
-          >
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Working day
-              </span>
-              <button
-                type="button"
-                onClick={() => setWeekChipAnchor((d) => addWeeks(d, -1))}
-                className="border border-slate-600 text-slate-300 hover:bg-slate-700 px-2 py-0.5 rounded text-xs"
-                aria-label="Previous week"
-              >
-                ◀
-              </button>
-              <span className="text-xs text-slate-300">
-                {format(weekChipDays[0], "MMM d")} –{" "}
-                {format(weekChipDays[6], "MMM d")}
-              </span>
-              <button
-                type="button"
-                onClick={() => setWeekChipAnchor((d) => addWeeks(d, 1))}
-                className="border border-slate-600 text-slate-300 hover:bg-slate-700 px-2 py-0.5 rounded text-xs"
-                aria-label="Next week"
-              >
-                ▶
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const today = new Date();
-                  setWeekChipAnchor(today);
-                  switchWorkingDay(format(today, "yyyy-MM-dd"));
-                }}
-                className="border border-slate-600 text-slate-300 hover:bg-slate-700 px-2 py-0.5 rounded text-xs"
-              >
-                Today
-              </button>
-              {dayNotice && (
-                <span className="text-xs text-green-400 sm:ml-auto">
-                  {dayNotice}
-                </span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {weekChipDays.map((day) => {
-                const dateKey = format(day, "yyyy-MM-dd");
-                const active = dateKey === workingDay;
-                const count = routeCountByDate.get(dateKey) ?? 0;
-                const today = isToday(day);
-                return (
-                  <button
-                    key={dateKey}
-                    type="button"
-                    onClick={() => switchWorkingDay(dateKey)}
-                    className={`min-w-[2.75rem] flex-1 sm:flex-none rounded-md px-2 py-1.5 text-center transition-colors border ${
-                      active
-                        ? "bg-amber-600 border-amber-500 text-white"
-                        : today
-                          ? "bg-blue-950/50 border-blue-600 text-blue-100 hover:bg-blue-900/50"
-                          : "bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700"
-                    }`}
-                    title={
-                      count > 0
-                        ? `${count} saved route${count !== 1 ? "s" : ""}`
-                        : "No saved route yet"
-                    }
-                  >
-                    <div className="text-[10px] font-semibold uppercase opacity-90">
-                      {format(day, "EEE")}
-                    </div>
-                    <div className="text-sm font-bold tabular-nums leading-tight">
-                      {format(day, "d")}
-                    </div>
-                    <div
-                      className={`text-[9px] mt-0.5 ${
-                        count > 0 ? "opacity-90" : "opacity-40"
-                      }`}
-                    >
-                      {count > 0 ? `${count}` : "·"}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSaveToWorkingDay}
-                disabled={routeStopOrder.length === 0 && !liveRouteHasStops()}
-                className="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-3 py-2 rounded text-sm font-semibold transition-colors w-full sm:w-auto"
-              >
-                Save now{" "}
-                {(() => {
-                  try {
-                    return format(
-                      parse(workingDay, "yyyy-MM-dd", new Date()),
-                      "EEE M/d"
-                    );
-                  } catch {
-                    return "day";
-                  }
-                })()}
-              </button>
-              <p className="text-[11px] text-slate-400 min-w-0">
-                {workingRoute ? (
-                  <>
-                    Editing{" "}
-                    <span className="text-slate-200">{workingRoute.name}</span>
-                    {" · "}
-                    {workingRoute.customerIds.length +
-                      workingRoute.manualStops.length}{" "}
-                    saved stops. Switching days auto-saves this route before
-                    loading the next day.
-                  </>
-                ) : (
-                  <>
-                    No saved route for this day yet. Build stops on the map,
-                    then tap Save now, or just switch days and it will auto-save.
-                  </>
-                )}
-              </p>
-            </div>
+          {/* Route stats stay in the header — separate from Week planner / Working day */}
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-slate-600/80 bg-slate-900/60 px-2.5 py-2 text-xs">
             {driveStats ? (
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-slate-600/80 bg-slate-800/80 px-2.5 py-2 text-xs">
+              <>
                 <span className="font-semibold uppercase tracking-wide text-slate-400">
                   Route stats
                 </span>
@@ -1303,19 +1178,41 @@ export default function MapPage() {
                   {driveStats.legs.length !== 1 ? "s" : ""}
                   {routeStart ? " from start" : ""})
                 </span>
-              </div>
-            ) : orderedRoutePoints.length >= 2 ? (
-              <p className="mt-2 text-[11px] text-slate-500">
-                Route stats appear once directions load (need 2+ stops
-                {routeStart ? " or start + stops" : ""}).
-              </p>
-            ) : null}
+              </>
+            ) : (
+              <span className="text-slate-500">
+                {orderedRoutePoints.length >= 2
+                  ? "Route stats loading…"
+                  : "Route stats — add 2+ stops"}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setWeekPlannerOpen(true);
+                setMobileToolsOpen(false);
+              }}
+              className="text-amber-300/90 hover:text-amber-200 text-[11px] sm:ml-auto underline-offset-2 hover:underline"
+              title="Open Week planner to change working day"
+            >
+              Working{" "}
+              {(() => {
+                try {
+                  return format(
+                    parse(workingDay, "yyyy-MM-dd", new Date()),
+                    "EEE M/d"
+                  );
+                } catch {
+                  return workingDay;
+                }
+              })()}
+            </button>
           </div>
 
-          {/* Week planner dropdown */}
+          {/* Week planner dropdown — includes Working day controls */}
           {weekPlannerOpen && (
-            <div className="absolute right-2 sm:right-4 top-full z-30 mt-1 w-[min(28rem,calc(100vw-1rem))] max-h-[65vh] overflow-y-auto rounded-lg border border-slate-600 bg-slate-800 shadow-2xl p-3">
-              <div className="flex items-center justify-between mb-2">
+            <div className="absolute left-2 right-2 sm:left-auto sm:right-4 top-full z-30 mt-1 w-auto sm:w-[min(28rem,calc(100vw-1rem))] max-h-[70vh] overflow-y-auto rounded-lg border border-slate-600 bg-slate-800 shadow-2xl p-3">
+              <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm font-semibold text-slate-100">
                   Week planner
                 </h2>
@@ -1328,6 +1225,134 @@ export default function MapPage() {
                   ✕
                 </button>
               </div>
+
+              {/* Working day: pick a day, save this map route to it, switch days to load */}
+              <div className="mb-3 rounded-lg border border-slate-600 bg-slate-900/50 p-2 sm:p-3">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Working day
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setWeekChipAnchor((d) => addWeeks(d, -1))}
+                    className="border border-slate-600 text-slate-300 hover:bg-slate-700 px-2 py-0.5 rounded text-xs"
+                    aria-label="Previous week"
+                  >
+                    ◀
+                  </button>
+                  <span className="text-xs text-slate-300">
+                    {format(weekChipDays[0], "MMM d")} –{" "}
+                    {format(weekChipDays[6], "MMM d")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setWeekChipAnchor((d) => addWeeks(d, 1))}
+                    className="border border-slate-600 text-slate-300 hover:bg-slate-700 px-2 py-0.5 rounded text-xs"
+                    aria-label="Next week"
+                  >
+                    ▶
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const today = new Date();
+                      setWeekChipAnchor(today);
+                      switchWorkingDay(format(today, "yyyy-MM-dd"));
+                    }}
+                    className="border border-slate-600 text-slate-300 hover:bg-slate-700 px-2 py-0.5 rounded text-xs"
+                  >
+                    Today
+                  </button>
+                  {dayNotice && (
+                    <span className="text-xs text-green-400 sm:ml-auto">
+                      {dayNotice}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {weekChipDays.map((day) => {
+                    const dateKey = format(day, "yyyy-MM-dd");
+                    const active = dateKey === workingDay;
+                    const count = routeCountByDate.get(dateKey) ?? 0;
+                    const today = isToday(day);
+                    return (
+                      <button
+                        key={dateKey}
+                        type="button"
+                        onClick={() => switchWorkingDay(dateKey)}
+                        className={`min-w-[2.75rem] flex-1 sm:flex-none rounded-md px-2 py-1.5 text-center transition-colors border ${
+                          active
+                            ? "bg-amber-600 border-amber-500 text-white"
+                            : today
+                              ? "bg-blue-950/50 border-blue-600 text-blue-100 hover:bg-blue-900/50"
+                              : "bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700"
+                        }`}
+                        title={
+                          count > 0
+                            ? `${count} saved route${count !== 1 ? "s" : ""}`
+                            : "No saved route yet"
+                        }
+                      >
+                        <div className="text-[10px] font-semibold uppercase opacity-90">
+                          {format(day, "EEE")}
+                        </div>
+                        <div className="text-sm font-bold tabular-nums leading-tight">
+                          {format(day, "d")}
+                        </div>
+                        <div
+                          className={`text-[9px] mt-0.5 ${
+                            count > 0 ? "opacity-90" : "opacity-40"
+                          }`}
+                        >
+                          {count > 0 ? `${count}` : "·"}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveToWorkingDay}
+                    disabled={routeStopOrder.length === 0 && !liveRouteHasStops()}
+                    className="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-3 py-2 rounded text-sm font-semibold transition-colors w-full sm:w-auto"
+                  >
+                    Save now{" "}
+                    {(() => {
+                      try {
+                        return format(
+                          parse(workingDay, "yyyy-MM-dd", new Date()),
+                          "EEE M/d"
+                        );
+                      } catch {
+                        return "day";
+                      }
+                    })()}
+                  </button>
+                  <p className="text-[11px] text-slate-400 min-w-0">
+                    {workingRoute ? (
+                      <>
+                        Editing{" "}
+                        <span className="text-slate-200">
+                          {workingRoute.name}
+                        </span>
+                        {" · "}
+                        {workingRoute.customerIds.length +
+                          workingRoute.manualStops.length}{" "}
+                        saved stops. Switching days auto-saves this route before
+                        loading the next day.
+                      </>
+                    ) : (
+                      <>
+                        No saved route for this day yet. Build stops on the map,
+                        then tap Save now, or just switch days and it will
+                        auto-save.
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+
               <WeekRoutePlanner onUseRoute={handleUseSavedRoute} />
             </div>
           )}
