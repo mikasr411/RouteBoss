@@ -16,10 +16,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" className="h-dvh">
+      <body
+        className={`${inter.className} flex h-dvh flex-col overflow-hidden bg-slate-900`}
+      >
         <Navbar />
-        <main className="min-h-screen bg-slate-900 w-full max-w-[100vw] min-w-0 overflow-x-hidden">
+        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-slate-900 w-full max-w-[100vw]">
           {children}
         </main>
       </body>

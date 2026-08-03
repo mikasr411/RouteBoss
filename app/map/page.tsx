@@ -1080,7 +1080,7 @@ export default function MapPage() {
 
   return (
     <MapLoader>
-      <div className="flex flex-col h-[calc(100dvh-4.5rem)] sm:h-[calc(100dvh-4rem)] min-h-[300px] w-full max-w-full min-w-0 overflow-hidden bg-slate-900">
+      <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-1 flex-col overflow-hidden bg-slate-900">
         {/* Header */}
         <div className="relative shrink-0 bg-slate-800 border-b border-slate-700 px-3 sm:px-4 py-2 sm:py-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1091,10 +1091,9 @@ export default function MapPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setMobileToolsOpen((v) => {
-                    if (!v) setWeekPlannerOpen(false);
-                    return !v;
-                  });
+                  setMobileToolsOpen((v) => !v);
+                  // Free mobile viewport: close week planner + hide working-day strip
+                  setWeekPlannerOpen(false);
                 }}
                 aria-expanded={mobileToolsOpen}
                 className={`md:hidden px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
@@ -1108,10 +1107,8 @@ export default function MapPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setWeekPlannerOpen((v) => {
-                    if (!v) setMobileToolsOpen(false);
-                    return !v;
-                  });
+                  setWeekPlannerOpen((v) => !v);
+                  setMobileToolsOpen(false);
                 }}
                 aria-expanded={weekPlannerOpen}
                 className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
@@ -1160,8 +1157,13 @@ export default function MapPage() {
             </p>
           )}
 
-          {/* Working day: pick a day, save this map route to it, switch days to load */}
-          <div className="mt-3 rounded-lg border border-slate-600 bg-slate-900/50 p-2 sm:p-3">
+          {/* Working day: pick a day, save this map route to it, switch days to load.
+              Hidden on mobile while Tools is open so the tools panel can use the screen. */}
+          <div
+            className={`mt-3 rounded-lg border border-slate-600 bg-slate-900/50 p-2 sm:p-3 ${
+              mobileToolsOpen ? "hidden md:block" : ""
+            }`}
+          >
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                 Working day
@@ -1876,7 +1878,7 @@ export default function MapPage() {
           </div>
 
           {/* Map — fills the screen on mobile (tools overlay on top), right column on md+ */}
-          <div className="relative w-full min-w-0 flex-1 min-h-[280px] md:min-h-0 md:border-l border-slate-700">
+          <div className="relative w-full min-w-0 flex-1 min-h-0 md:border-l border-slate-700">
             {routeMoveAwaitingTargetFromIndex !== null && (
               <div className="absolute left-2 right-2 top-2 z-[2] flex flex-wrap items-center justify-center gap-2 rounded-lg border border-cyan-600/60 bg-slate-950/95 px-2 py-2 text-center shadow-lg sm:left-4 sm:right-4">
                 <p className="text-xs text-cyan-100">
