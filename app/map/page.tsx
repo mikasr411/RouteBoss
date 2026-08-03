@@ -284,11 +284,15 @@ export default function MapPage() {
     return customersWithCoords.filter((c) => c.isSelectedForRoute);
   }, [customersWithCoords]);
 
-  /** Map pins + sidebar list — all filtered customers, or route stops only. */
+  /** Map pins — all filtered customers, or route stops only (ignores list filters). */
   const customersOnMap = useMemo(() => {
-    if (routeOnlyView) return selectedForRoute;
+    if (routeOnlyView) {
+      return customers.filter(
+        (c) => c.isSelectedForRoute && hasCoordinates(c)
+      );
+    }
     return customersWithCoords;
-  }, [routeOnlyView, selectedForRoute, customersWithCoords]);
+  }, [routeOnlyView, customers, customersWithCoords]);
 
   const manualStopsOnMap = useMemo(() => {
     if (!routeOnlyView) return manualStops;
@@ -1770,26 +1774,14 @@ export default function MapPage() {
               )}
             </div>
 
-            {/* Filters */}
-            {routeOnlyView ? (
-              <div className="p-3 sm:p-4 border-b border-slate-700 order-6 md:order-none shrink-0">
-                <p className="text-xs text-slate-400">
-                  Filters are hidden in route-only view. Switch to{" "}
-                  <span className="text-slate-200">All customers</span> to
-                  browse and add stops.
-                </p>
-                {routeStopOrder.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={fitMapToRoute}
-                    className="mt-2 w-full bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
-                  >
-                    Fit map to route
-                  </button>
-                )}
-              </div>
-            ) : (
+            {/* Filters — always available so you can look up / add customers even in route-only */}
             <div className="p-3 sm:p-4 border-b border-slate-700 space-y-3 order-6 md:order-none shrink-0">
+              {routeOnlyView && (
+                <p className="text-xs text-slate-400">
+                  Map shows route stops only. Search below to find and add
+                  customers.
+                </p>
+              )}
               <div>
                 <label className="block text-xs text-slate-300 mb-1">
                   Search by name
@@ -1846,20 +1838,27 @@ export default function MapPage() {
                   <option value="due">Due Only</option>
                 </select>
               </div>
-            </div>
-            )}
 
-            {/* Customer list: on mobile, whole panel scrolls; on md+, only this section scrolls */}
+              {routeOnlyView && routeStopOrder.length > 0 && (
+                <button
+                  type="button"
+                  onClick={fitMapToRoute}
+                  className="w-full bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded text-sm font-medium transition-colors"
+                >
+                  Fit map to route
+                </button>
+              )}
+            </div>
+
+            {/* Customer list: searchable always; map pins stay route-only when that mode is on */}
             <div className="flex-none order-7 md:order-none">
-              {customersOnMap.length === 0 ? (
+              {customersWithCoords.length === 0 ? (
                 <div className="p-4 text-center text-slate-400 text-sm">
-                  {routeOnlyView
-                    ? "No route customers with coordinates yet."
-                    : "No customers with coordinates match filters."}
+                  No customers with coordinates match filters.
                 </div>
               ) : (
                 <div className="divide-y divide-slate-700">
-                  {customersOnMap.map((customer) => {
+                  {customersWithCoords.map((customer) => {
                     return (
                       <div
                         key={customer.id}
