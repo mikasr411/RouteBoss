@@ -45,10 +45,10 @@ const defaultZoom = 10;
 
 // Marker colors based on status
 const getMarkerColor = (customer: Customer): string => {
+  // Orange: new lead already contacted (wins over on-route emerald so Routes toggles show on map)
+  if (!customer.lastServiceDate && customer.leadContacted) return "#f97316";
   // Emerald: on route (letter A/B/C…)
   if (customer.isSelectedForRoute) return "#10b981";
-  // Orange: new lead already contacted
-  if (!customer.lastServiceDate && customer.leadContacted) return "#f97316";
   // Green: never serviced / new lead (not contacted yet)
   if (!customer.lastServiceDate) return "#22c55e";
   // Red: due for service
@@ -2081,7 +2081,7 @@ export default function MapPage() {
                 };
                 return (
                     <Marker
-                      key={`${customer.id}-${customer.isSelectedForRoute ? "sel" : "un"}-${color}-${letter ?? "x"}`}
+                      key={`${customer.id}-sel:${customer.isSelectedForRoute}-con:${customer.leadContacted}-svc:${customer.lastServiceDate ?? ""}-${color}-${letter ?? "x"}`}
                       position={pos}
                       icon={icon}
                       onClick={() =>
