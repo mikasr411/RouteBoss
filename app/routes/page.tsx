@@ -1060,7 +1060,7 @@ export default function RoutesPage() {
                         ? "border-blue-500/50 ring-1 ring-blue-500/25"
                         : item.customer.leadContacted &&
                             !item.customer.lastServiceDate
-                          ? "border-purple-500/60 ring-1 ring-purple-500/30"
+                          ? "border-orange-500/60 ring-1 ring-orange-500/30"
                           : "border-slate-600"
                     }`}
                   >
@@ -1095,12 +1095,12 @@ export default function RoutesPage() {
                                   e.target.checked
                                 )
                               }
-                              className="rounded border-slate-500 text-purple-500 focus:ring-purple-500"
+                              className="rounded border-slate-500 text-orange-500 focus:ring-orange-500"
                             />
                             <span
                               className={
                                 item.customer.leadContacted
-                                  ? "text-purple-200 font-medium"
+                                  ? "text-orange-200 font-medium"
                                   : "text-slate-300"
                               }
                             >
