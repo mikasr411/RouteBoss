@@ -64,7 +64,11 @@ export default function RoutesPage() {
       MESSAGE_TEMPLATE_PRESET_KEY
     ) as MessageTemplatePreset | null;
     const saved = localStorage.getItem("routeboss:messageTemplate");
-    if (savedPreset === "lost-and-found" || savedPreset === "due-reminder") {
+    if (
+      savedPreset === "lost-and-found" ||
+      savedPreset === "due-reminder" ||
+      savedPreset === "september-special"
+    ) {
       setTemplatePreset(savedPreset);
     }
     if (saved) {
@@ -809,6 +813,17 @@ export default function RoutesPage() {
                 >
                   Lost &amp; Found
                 </button>
+                <button
+                  type="button"
+                  onClick={() => applyPreset("september-special")}
+                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                    templatePreset === "september-special"
+                      ? "bg-green-700 text-white"
+                      : "border border-slate-500 text-slate-300 hover:bg-slate-600"
+                  }`}
+                >
+                  $1 special
+                </button>
               </div>
             </div>
             <p className="text-xs text-slate-400 mb-3">
@@ -837,16 +852,22 @@ export default function RoutesPage() {
                 {"{story}"}
               </code>
               {" "}
-              <span className="text-slate-500">(single $90 / two-story $140)</span>
+              <span className="text-slate-500">(base fee)</span>
               ,{" "}
               <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
-                {"{oneStoryPrice}"}
+                {"{totalPrice}"}
               </code>
-              ,{" "}
-              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
-                {"{twoStoryPrice}"}
-              </code>
+              {" "}
+              <span className="text-slate-500">(base + panels × $1)</span>
               . One message will be generated per selected stop.
+            </p>
+            <p className="text-xs text-slate-500 mb-3">
+              Promo example:{" "}
+              <span className="text-slate-400 italic">
+                For your {"{panelCountNum}"}-panel {"{storyLabel}"} system, the
+                promotional pricing is a {"{baseFee}"} base fee + {"{perPanelPrice}"}{" "}
+                per panel, bringing the total to {"{totalPrice}"}.
+              </span>
             </p>
             <textarea
               value={template}
@@ -898,7 +919,31 @@ export default function RoutesPage() {
               </code>
               ,{" "}
               <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{panelCountNum}"}
+              </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{storyLabel}"}
+              </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{baseFee}"}
+              </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
                 {"{story}"}
+              </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{perPanelPrice}"}
+              </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{panelFee}"}
+              </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{totalPrice}"}
               </code>
               ,{" "}
               <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
