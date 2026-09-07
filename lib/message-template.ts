@@ -9,6 +9,35 @@ export function formatQuotePrice(dollars: number): string {
   return `$${dollars}`;
 }
 
+/** Read panel count from customer field or legacy notes from Facebook import */
+export function resolvePanelCount(customer: Customer): string {
+  if (customer.panelCount?.trim()) return customer.panelCount.trim();
+  const notes = customer.notes || "";
+  const match = notes.match(/Panels:\s*([^·\n]+)/i);
+  return match?.[1]?.trim() || "";
+}
+
+/** Read story type from customer field or legacy notes from Facebook import */
+export function resolveStoryType(customer: Customer): string | undefined {
+  if (customer.storyType?.trim()) return customer.storyType.trim();
+  const notes = customer.notes || "";
+  const match = notes.match(/Story:\s*([^·\n]+)/i);
+  return match?.[1]?.trim();
+}
+
+/** Pick $90 single vs $140 two-story from lead story type */
+export function quotePriceForStoryType(storyType?: string | null): string {
+  const s = (storyType || "").toLowerCase().replace(/[_-]/g, " ");
+  if (!s) return "";
+  if (/\b2\b/.test(s) || s.includes("two")) {
+    return formatQuotePrice(TWO_STORY_PRICE);
+  }
+  if (s.includes("single") || s.includes("one") || s === "1") {
+    return formatQuotePrice(ONE_STORY_PRICE);
+  }
+  return "";
+}
+
 export type TemplateVariables = {
   displayName: string;
   firstName: string;
@@ -20,6 +49,8 @@ export type TemplateVariables = {
   nextServiceDate: string;
   daysSinceLastService: string;
   panelCount: string;
+  /** Quote price from story type: single → $90, two-story → $140 */
+  story: string;
   oneStoryPrice: string;
   twoStoryPrice: string;
 };
@@ -68,7 +99,8 @@ export function buildTemplateVariables(customer: Customer): TemplateVariables {
     lastServiceDate: lastServiceDateFormatted,
     nextServiceDate: nextServiceDateFormatted,
     daysSinceLastService,
-    panelCount: customer.panelCount?.trim() || "",
+    panelCount: resolvePanelCount(customer),
+    story: quotePriceForStoryType(resolveStoryType(customer)),
     oneStoryPrice: formatQuotePrice(ONE_STORY_PRICE),
     twoStoryPrice: formatQuotePrice(TWO_STORY_PRICE),
   };

@@ -834,6 +834,12 @@ export default function RoutesPage() {
               </code>
               ,{" "}
               <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{story}"}
+              </code>
+              {" "}
+              <span className="text-slate-500">(single $90 / two-story $140)</span>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
                 {"{oneStoryPrice}"}
               </code>
               ,{" "}
@@ -889,6 +895,10 @@ export default function RoutesPage() {
               ,{" "}
               <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
                 {"{panelCount}"}
+              </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{story}"}
               </code>
               ,{" "}
               <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
