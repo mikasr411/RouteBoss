@@ -1,7 +1,9 @@
 export type ServiceFrequency = "OneTime" | "Biannual" | "Quarterly";
 
+export type LeadSource = "housecallpro" | "facebook";
+
 export type Customer = {
-  id: string;                // from "ID"
+  id: string;                // from "ID" (Housecall Pro) or "id" (Facebook lead)
   firstName?: string;        // "First Name"
   lastName?: string;         // "Last Name"
   displayName: string;       // "Display Name"
@@ -24,5 +26,9 @@ export type Customer = {
   isSelectedForRoute?: boolean; // used for route selection
   latitude?: number | null;  // geocoded latitude
   longitude?: number | null; // geocoded longitude
+  /** Facebook/Meta ad campaign name, e.g. "$1 per special Sept" */
+  leadSpecial?: string;
+  /** Where this contact was imported from */
+  leadSource?: LeadSource;
 };
 

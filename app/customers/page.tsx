@@ -7,6 +7,7 @@ import { Customer, ServiceFrequency } from "@/types/customer";
 import { formatDate, isCustomerDue, skipServiceCycle, calculateNextServiceDate } from "@/lib/utils";
 import { groupDueCustomersByCity, groupLostAndFoundByCity, isLostAndFoundCustomer } from "@/lib/message-everyone";
 import { applyMessageTemplatePreset } from "@/lib/message-template";
+import { listLeadSpecials } from "@/lib/csv-parser";
 import { parse, compareAsc } from "date-fns";
 import PhoneContactLinks from "@/components/PhoneContactLinks";
 
@@ -24,6 +25,7 @@ export default function CustomersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCity, setSelectedCity] = useState<string>("all");
   const [selectedFrequency, setSelectedFrequency] = useState<string>("all");
+  const [selectedSpecial, setSelectedSpecial] = useState<string>("all");
   const [dueOnly, setDueOnly] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>("city");
 
@@ -32,6 +34,8 @@ export default function CustomersPage() {
     const citySet = new Set(customers.map((c) => c.city).filter(Boolean));
     return Array.from(citySet).sort();
   }, [customers]);
+
+  const leadSpecials = useMemo(() => listLeadSpecials(customers), [customers]);
 
   // Filter and sort customers
   const filteredCustomers = useMemo(() => {
@@ -53,6 +57,13 @@ export default function CustomersPage() {
     // Frequency filter
     if (selectedFrequency !== "all") {
       filtered = filtered.filter((c) => c.serviceFrequency === selectedFrequency);
+    }
+
+    // Special / campaign filter
+    if (selectedSpecial === "any") {
+      filtered = filtered.filter((c) => !!c.leadSpecial);
+    } else if (selectedSpecial !== "all") {
+      filtered = filtered.filter((c) => c.leadSpecial === selectedSpecial);
     }
 
     // Due filter
@@ -95,7 +106,15 @@ export default function CustomersPage() {
     });
 
     return filtered;
-  }, [customers, searchQuery, selectedCity, selectedFrequency, dueOnly, sortBy]);
+  }, [
+    customers,
+    searchQuery,
+    selectedCity,
+    selectedFrequency,
+    selectedSpecial,
+    dueOnly,
+    sortBy,
+  ]);
 
   const selectedCount = customers.filter((c) => c.isSelectedForRoute).length;
 
@@ -270,7 +289,7 @@ export default function CustomersPage() {
         </div>
 
         {/* Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
           <div>
             <label className="block text-sm text-slate-300 mb-1">Search by name</label>
             <input
@@ -323,6 +342,27 @@ export default function CustomersPage() {
               <option value="due">Due Only</option>
             </select>
           </div>
+
+          {leadSpecials.length > 0 && (
+            <div>
+              <label className="block text-sm text-slate-300 mb-1">
+                Special
+              </label>
+              <select
+                value={selectedSpecial}
+                onChange={(e) => setSelectedSpecial(e.target.value)}
+                className="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All</option>
+                <option value="any">Any special lead</option>
+                {leadSpecials.map((special) => (
+                  <option key={special} value={special}>
+                    {special}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm text-slate-300 mb-1">Sort by</label>
@@ -560,6 +600,11 @@ export default function CustomersPage() {
                     </td>
                     <td className="border border-slate-600 px-4 py-2 text-slate-300">
                       {customer.displayName}
+                      {customer.leadSpecial && (
+                        <span className="ml-2 inline-block rounded bg-green-900/40 border border-green-700/50 px-1.5 py-0.5 text-[10px] text-green-200">
+                          {customer.leadSpecial}
+                        </span>
+                      )}
                     </td>
                     <td className="border border-slate-600 px-3 py-2 text-slate-300 text-sm">
                       <PhoneContactLinks

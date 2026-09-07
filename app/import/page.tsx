@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/utils";
 
 export default function ImportPage() {
   const [previewCustomers, setPreviewCustomers] = useState<Customer[]>([]);
+  const [importSource, setImportSource] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { setCustomers, mergeCustomersFromImport } = useCustomerStore();
@@ -22,8 +23,17 @@ export default function ImportPage() {
     try {
       const customers = await parseCSV(file);
       setPreviewCustomers(customers);
+      const src = customers[0]?.leadSource;
+      setImportSource(
+        src === "facebook"
+          ? "Meta / Facebook leads"
+          : src === "housecallpro"
+            ? "Housecall Pro"
+            : null
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to parse CSV");
+      setImportSource(null);
     } finally {
       setIsLoading(false);
     }
@@ -34,8 +44,9 @@ export default function ImportPage() {
     useCustomerStore.getState().syncRouteStopOrder();
     const n = previewCustomers.length;
     setPreviewCustomers([]);
+    setImportSource(null);
     alert(
-      `Merged ${n} customer${n !== 1 ? "s" : ""} by ID. Existing contacts not in this file were kept; map coordinates, route selections, notes, and service frequency were preserved where applicable.`
+      `Merged ${n} customer${n !== 1 ? "s" : ""} by ID (Facebook leads also match existing contacts by phone). Existing contacts not in this file were kept; map coordinates, route selections, notes, and service history were preserved where applicable.`
     );
   };
 
@@ -51,11 +62,13 @@ export default function ImportPage() {
     useCustomerStore.getState().syncRouteStopOrder();
     const n = previewCustomers.length;
     setPreviewCustomers([]);
+    setImportSource(null);
     alert(`Replaced with ${n} customer${n !== 1 ? "s" : ""} from this import.`);
   };
 
   const handleClear = () => {
     setPreviewCustomers([]);
+    setImportSource(null);
     setError(null);
   };
 
@@ -63,27 +76,30 @@ export default function ImportPage() {
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
         <h1 className="text-3xl font-bold mb-2 text-slate-100">
-          Import Housecall Pro CSV
+          Import customers
         </h1>
         <p className="text-slate-400 mb-4">
-          Upload your customer export CSV file from Housecall Pro.
+          Upload a Housecall Pro customer export or a Meta/Facebook leads export
+          (tab-separated).
         </p>
         <p className="text-slate-500 text-sm mb-6">
           <strong className="text-slate-300">Merge by ID</strong> (recommended)
           updates matching contacts and adds new ones, keeps everyone who is not
           in this file, and preserves map coordinates, who is on the current route,
-          notes, and your service frequency.{" "}
+          notes, and your service frequency. Facebook leads use their lead{" "}
+          <code className="text-slate-400">id</code> on re-import; if the phone
+          matches an existing Housecall Pro customer, they merge into that contact.{" "}
           <strong className="text-slate-300">Replace all</strong> wipes the list
           and loads only this file.
         </p>
 
         <div className="mb-6">
           <label className="block mb-2 text-slate-300">
-            Select CSV File
+            Select CSV / TSV file
           </label>
           <input
             type="file"
-            accept=".csv"
+            accept=".csv,.tsv,.txt"
             onChange={handleFileSelect}
             disabled={isLoading}
             className="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-slate-700 file:text-slate-100 hover:file:bg-slate-600 cursor-pointer"
@@ -91,7 +107,7 @@ export default function ImportPage() {
         </div>
 
         {isLoading && (
-          <div className="text-slate-400 mb-4">Parsing CSV...</div>
+          <div className="text-slate-400 mb-4">Parsing file...</div>
         )}
 
         {error && (
@@ -105,6 +121,11 @@ export default function ImportPage() {
             <div className="mb-4">
               <p className="text-slate-300">
                 Preview: {previewCustomers.length} customers found
+                {importSource ? ` (${importSource})` : ""}
+              </p>
+              <p className="text-slate-500 text-sm mt-1">
+                New leads (no service date) show as green pins on the map after
+                geocoding. Use the Special filter to find campaign leads.
               </p>
             </div>
 
@@ -119,13 +140,13 @@ export default function ImportPage() {
                       City
                     </th>
                     <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
-                      State
+                      Special
                     </th>
                     <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
                       Last Service
                     </th>
                     <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
-                      Next Service
+                      Phone
                     </th>
                     <th className="border border-slate-600 px-4 py-2 text-left text-slate-200">
                       Address
@@ -141,14 +162,14 @@ export default function ImportPage() {
                       <td className="border border-slate-600 px-4 py-2 text-slate-300">
                         {customer.city}
                       </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-300">
-                        {customer.state}
+                      <td className="border border-slate-600 px-4 py-2 text-slate-300 text-sm">
+                        {customer.leadSpecial || "—"}
                       </td>
                       <td className="border border-slate-600 px-4 py-2 text-slate-300">
                         {formatDate(customer.lastServiceDate)}
                       </td>
-                      <td className="border border-slate-600 px-4 py-2 text-slate-300">
-                        {formatDate(customer.nextServiceDate)}
+                      <td className="border border-slate-600 px-4 py-2 text-slate-300 text-sm">
+                        {customer.mobileNumber || "—"}
                       </td>
                       <td className="border border-slate-600 px-4 py-2 text-slate-300 text-sm">
                         {customer.fullAddress}
@@ -170,7 +191,7 @@ export default function ImportPage() {
                 onClick={handleMerge}
                 className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2 rounded transition-colors font-semibold"
               >
-                Merge import (by customer ID)
+                Merge import (by ID / phone)
               </button>
               <button
                 type="button"
@@ -193,4 +214,3 @@ export default function ImportPage() {
     </div>
   );
 }
-

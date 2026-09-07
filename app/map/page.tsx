@@ -25,6 +25,7 @@ import { v4 as uuidv4 } from "uuid";
 import { ManualRouteStop } from "@/types/manual-stop";
 import { routeVisitLetter } from "@/lib/route-visit-letter";
 import { extractRouteDriveStats } from "@/lib/route-stats";
+import { listLeadSpecials } from "@/lib/csv-parser";
 import { format, startOfWeek, addDays, addWeeks, isToday, parse } from "date-fns";
 
 const WORKING_DAY_KEY = "routeboss:mapWorkingDay";
@@ -44,12 +45,14 @@ const defaultZoom = 10;
 
 // Marker colors based on status
 const getMarkerColor = (customer: Customer): string => {
-  // Green: Selected for route
-  if (customer.isSelectedForRoute) return "#10b981"; // Green
-  // Red: Due for service
-  if (isCustomerDue(customer)) return "#ef4444"; // Red
-  // Blue: All others
-  return "#3b82f6"; // Blue
+  // Emerald: on route (letter A/B/C…)
+  if (customer.isSelectedForRoute) return "#10b981";
+  // Green: never serviced / new lead (no last service date)
+  if (!customer.lastServiceDate) return "#22c55e";
+  // Red: due for service
+  if (isCustomerDue(customer)) return "#ef4444";
+  // Blue: regular customers
+  return "#3b82f6";
 };
 
 // Create custom marker icon (must be called when google.maps is available)
@@ -150,6 +153,7 @@ export default function MapPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCity, setSelectedCity] = useState<string>("all");
   const [selectedFrequency, setSelectedFrequency] = useState<string>("all");
+  const [selectedSpecial, setSelectedSpecial] = useState<string>("all");
   const [dueOnly, setDueOnly] = useState(false);
   const [routeOnlyView, setRouteOnlyView] = useState(false);
   const [weekPlannerOpen, setWeekPlannerOpen] = useState(false);
@@ -244,6 +248,8 @@ export default function MapPage() {
     return Array.from(citySet).sort();
   }, [customers]);
 
+  const leadSpecials = useMemo(() => listLeadSpecials(customers), [customers]);
+
   // Filter customers
   const filteredCustomers = useMemo(() => {
     let filtered = customers;
@@ -266,13 +272,27 @@ export default function MapPage() {
       filtered = filtered.filter((c) => c.serviceFrequency === selectedFrequency);
     }
 
+    // Special / campaign filter (Facebook leads)
+    if (selectedSpecial === "any") {
+      filtered = filtered.filter((c) => !!c.leadSpecial);
+    } else if (selectedSpecial !== "all") {
+      filtered = filtered.filter((c) => c.leadSpecial === selectedSpecial);
+    }
+
     // Due filter
     if (dueOnly) {
       filtered = filtered.filter(isCustomerDue);
     }
 
     return filtered;
-  }, [customers, searchQuery, selectedCity, selectedFrequency, dueOnly]);
+  }, [
+    customers,
+    searchQuery,
+    selectedCity,
+    selectedFrequency,
+    selectedSpecial,
+    dueOnly,
+  ]);
 
   // Customers with coordinates
   const customersWithCoords = useMemo(() => {
@@ -1838,6 +1858,27 @@ export default function MapPage() {
                   <option value="due">Due Only</option>
                 </select>
               </div>
+
+              {leadSpecials.length > 0 && (
+                <div>
+                  <label className="block text-xs text-slate-300 mb-1">
+                    Special
+                  </label>
+                  <select
+                    value={selectedSpecial}
+                    onChange={(e) => setSelectedSpecial(e.target.value)}
+                    className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="all">All</option>
+                    <option value="any">Any special lead</option>
+                    {leadSpecials.map((special) => (
+                      <option key={special} value={special}>
+                        {special}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {routeOnlyView && routeStopOrder.length > 0 && (
                 <button
