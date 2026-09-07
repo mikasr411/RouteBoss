@@ -9,7 +9,11 @@ import {
   LOST_AND_FOUND_TEMPLATE,
   MESSAGE_TEMPLATE_PRESET_KEY,
   buildTemplateVariables,
-  applyTemplate,
+  applyTemplatePlain,
+  applyTemplateHtml,
+  copyMessageToClipboard,
+  normalizeBoldSyntax,
+  escapeHtml,
   type MessageTemplatePreset,
   templateForPreset,
 } from "@/lib/message-template";
@@ -72,7 +76,7 @@ export default function RoutesPage() {
       setTemplatePreset(savedPreset);
     }
     if (saved) {
-      setTemplate(saved);
+      setTemplate(normalizeBoldSyntax(saved));
     } else if (savedPreset) {
       setTemplate(templateForPreset(savedPreset));
     }
@@ -309,18 +313,28 @@ export default function RoutesPage() {
       .filter((r) => r.kind === "customer")
       .map((r) => {
         const variables = buildTemplateVariables(r.customer);
-        const message = applyTemplate(template, variables);
-        return { customer: r.customer, letter: r.letter, message };
+        const messagePlain = applyTemplatePlain(template, variables);
+        const messageHtml = applyTemplateHtml(template, variables);
+        return {
+          customer: r.customer,
+          letter: r.letter,
+          messagePlain,
+          messageHtml,
+        };
       });
   }, [visitStopsInOrder, template]);
 
-  // Copy single message
-  const handleCopyMessage = async (message: string, customerName: string) => {
+  // Copy single message (HTML bold when the app supports it, plain for SMS)
+  const handleCopyMessage = async (
+    messagePlain: string,
+    messageHtml: string,
+    customerName: string
+  ) => {
     try {
-      await navigator.clipboard.writeText(message);
+      await copyMessageToClipboard(messagePlain, messageHtml);
       setCopySuccess(`Copied message for ${customerName}`);
       setTimeout(() => setCopySuccess(null), 2000);
-    } catch (err) {
+    } catch {
       alert("Failed to copy message");
     }
   };
@@ -329,17 +343,23 @@ export default function RoutesPage() {
   const handleCopyAll = async () => {
     if (generatedMessages.length === 0) return;
 
-    const allMessages = generatedMessages
+    const allPlain = generatedMessages
       .map((item) => {
-        return `${item.letter} — ${item.customer.displayName} (${item.customer.city}, ${item.customer.state})\n\n${item.message}`;
+        return `${item.letter} — ${item.customer.displayName} (${item.customer.city}, ${item.customer.state})\n\n${item.messagePlain}`;
       })
       .join("\n\n---\n\n");
 
+    const allHtml = generatedMessages
+      .map((item) => {
+        return `<p><strong>${escapeHtml(item.letter)} — ${escapeHtml(item.customer.displayName)} (${escapeHtml(item.customer.city)}, ${escapeHtml(item.customer.state)})</strong></p>${item.messageHtml}`;
+      })
+      .join("<hr>");
+
     try {
-      await navigator.clipboard.writeText(allMessages);
+      await copyMessageToClipboard(allPlain, allHtml);
       setCopySuccess("Copied all messages to clipboard!");
       setTimeout(() => setCopySuccess(null), 2000);
-    } catch (err) {
+    } catch {
       alert("Failed to copy messages");
     }
   };
@@ -859,7 +879,12 @@ export default function RoutesPage() {
               </code>
               {" "}
               <span className="text-slate-500">(base + panels × $1)</span>
-              . One message will be generated per selected stop.
+              . One message will be generated per selected stop. Wrap words in{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                [b]bold[/b]
+              </code>{" "}
+              for bold in preview and when pasting into Notes or email (SMS copy
+              stays plain).
             </p>
             <p className="text-xs text-slate-500 mb-3">
               Promo example:{" "}
@@ -1014,7 +1039,11 @@ export default function RoutesPage() {
                         <button
                           type="button"
                           onClick={() =>
-                            handleCopyMessage(item.message, item.customer.displayName)
+                            handleCopyMessage(
+                              item.messagePlain,
+                              item.messageHtml,
+                              item.customer.displayName
+                            )
                           }
                           className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm transition-colors w-full sm:w-auto"
                         >
@@ -1033,9 +1062,10 @@ export default function RoutesPage() {
                       </div>
                     </div>
                     <div className="bg-slate-800 rounded p-3 border border-slate-600">
-                      <pre className="text-slate-100 text-sm whitespace-pre-wrap font-sans">
-                        {item.message}
-                      </pre>
+                      <div
+                        className="text-slate-100 text-sm font-sans leading-relaxed [&_b]:font-bold [&_b]:text-white"
+                        dangerouslySetInnerHTML={{ __html: item.messageHtml }}
+                      />
                     </div>
                   </div>
                 ))}

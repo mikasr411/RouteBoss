@@ -199,17 +199,91 @@ export function buildTemplateVariables(customer: Customer): TemplateVariables {
 }
 
 /**
- * Apply a template string to template variables
- * Replaces {variableName} with the corresponding value
+ * Apply a template string to template variables (plain text — bold markers stripped)
  */
 export function applyTemplate(
   template: string,
   variables: TemplateVariables
 ): string {
-  return template.replace(/\{(\w+)\}/g, (match, key) => {
+  return applyTemplatePlain(template, variables);
+}
+
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Convert legacy **bold** to [b]bold[/b] for editing */
+export function normalizeBoldSyntax(template: string): string {
+  return template.replace(/\*\*(.+?)\*\*/g, "[b]$1[/b]");
+}
+
+function substituteTemplateVariables(
+  template: string,
+  variables: TemplateVariables,
+  escapeValues: boolean
+): string {
+  return template.replace(/\{(\w+)\}/g, (_match, key) => {
     const value = variables[key as keyof TemplateVariables];
-    return value !== undefined ? value : "";
+    const str = value !== undefined ? String(value) : "";
+    return escapeValues ? escapeHtml(str) : str;
   });
+}
+
+/** Remove [b] markers — for SMS / plain-text copy */
+export function stripBoldMarkup(text: string): string {
+  return normalizeBoldSyntax(text).replace(
+    /\[b\]([\s\S]*?)\[\/b\]/gi,
+    "$1"
+  );
+}
+
+/** [b] markers → HTML bold + line breaks */
+export function boldMarkupToHtml(text: string): string {
+  return normalizeBoldSyntax(text)
+    .replace(/\[b\]([\s\S]*?)\[\/b\]/gi, "<b>$1</b>")
+    .replace(/\n/g, "<br>");
+}
+
+export function applyTemplatePlain(
+  template: string,
+  variables: TemplateVariables
+): string {
+  const filled = substituteTemplateVariables(template, variables, false);
+  return stripBoldMarkup(filled);
+}
+
+export function applyTemplateHtml(
+  template: string,
+  variables: TemplateVariables
+): string {
+  const filled = substituteTemplateVariables(template, variables, true);
+  return boldMarkupToHtml(filled);
+}
+
+/** Copy plain + HTML so paste into Notes/Mail keeps bold; SMS apps use plain */
+export async function copyMessageToClipboard(
+  plain: string,
+  htmlBody: string
+): Promise<void> {
+  const htmlDoc = `<!DOCTYPE html><html><body>${htmlBody}</body></html>`;
+  try {
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard.write) {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/plain": new Blob([plain], { type: "text/plain" }),
+          "text/html": new Blob([htmlDoc], { type: "text/html" }),
+        }),
+      ]);
+      return;
+    }
+  } catch {
+    // Rich clipboard blocked — fall back to plain text
+  }
+  await navigator.clipboard.writeText(plain);
 }
 
 /**
@@ -229,15 +303,15 @@ We don't have a recent service on file for your home. We're building routes in y
 Reply YES if you'd like a quote or to be added to an upcoming route.`;
 
 /** Meta / Facebook $1-per-panel special — pricing auto-calculated from story + panels */
-export const SEPTEMBER_SPECIAL_TEMPLATE = `Hey {firstName}, this is Marcos with Ramos Power Wash. I got your request for our **September $1 per panel solar cleaning special** and would be happy to help.
+export const SEPTEMBER_SPECIAL_TEMPLATE = `Hey {firstName}, this is Marcos with Ramos Power Wash. I got your request for our [b]September $1 per panel solar cleaning special[/b] and would be happy to help.
 
-For your **{panelCountNum}-panel {storyLabel} system**, the promotional pricing is a **{baseFee} base fee + {perPanelPrice} per panel**, bringing the total to **{totalPrice}**.
+For your [b]{panelCountNum}-panel {storyLabel} system[/b], the promotional pricing is a [b]{baseFee} base fee + {perPanelPrice} per panel[/b], bringing the total to [b]{totalPrice}[/b].
 
-We use a **solar-safe rotary brush system with purified water** to safely remove dirt, dust, pollen, bird droppings, and buildup without damaging the panels.
+We use a [b]solar-safe rotary brush system with purified water[/b] to safely remove dirt, dust, pollen, bird droppings, and buildup without damaging the panels.
 
-**No need to be home.** We send **before and after pictures** when we're done, and we offer convenient online payments.
+[b]No need to be home.[/b] We send [b]before and after pictures[/b] when we're done, and we offer convenient online payments.
 
-I have availability **tomorrow** if you'd like to get on the schedule. Just let me know and I can send you an arrival window.`;
+I have availability [b]tomorrow[/b] if you'd like to get on the schedule. Just let me know and I can send you an arrival window.`;
 
 export type MessageTemplatePreset =
   | "due-reminder"
