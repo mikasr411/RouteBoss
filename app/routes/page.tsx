@@ -344,15 +344,22 @@ export default function RoutesPage() {
       });
   }, [visitStopsInOrder, template]);
 
+  const markLeadContacted = (customer: Customer) => {
+    if (!customer.lastServiceDate && !customer.leadContacted) {
+      toggleLeadContacted(customer.id, true);
+    }
+  };
+
   // Copy single message (HTML bold when the app supports it, plain for SMS)
   const handleCopyMessage = async (
     messagePlain: string,
     messageHtml: string,
-    customerName: string
+    customer: Customer
   ) => {
     try {
       await copyMessageToClipboard(messagePlain, messageHtml);
-      setCopySuccess(`Copied message for ${customerName}`);
+      markLeadContacted(customer);
+      setCopySuccess(`Copied message for ${customer.displayName}`);
       setTimeout(() => setCopySuccess(null), 2000);
     } catch {
       alert("Failed to copy message");
@@ -377,6 +384,7 @@ export default function RoutesPage() {
 
     try {
       await copyMessageToClipboard(allPlain, allHtml);
+      generatedMessages.forEach((item) => markLeadContacted(item.customer));
       setCopySuccess("Copied all messages to clipboard!");
       setTimeout(() => setCopySuccess(null), 2000);
     } catch {
@@ -1060,6 +1068,7 @@ export default function RoutesPage() {
                         <PhoneContactLinks
                           mobileNumber={item.customer.mobileNumber}
                           homeNumber={item.customer.homeNumber}
+                          onTextClick={() => markLeadContacted(item.customer)}
                         />
                       </div>
                       <div className="flex flex-col sm:items-end gap-2 shrink-0 self-stretch sm:self-start">
@@ -1115,7 +1124,7 @@ export default function RoutesPage() {
                             handleCopyMessage(
                               item.messagePlain,
                               item.messageHtml,
-                              item.customer.displayName
+                              item.customer
                             )
                           }
                           className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm transition-colors w-full sm:w-auto"

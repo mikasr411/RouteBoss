@@ -13,6 +13,8 @@ type Props = {
   showEmpty?: boolean;
   className?: string;
   compact?: boolean;
+  /** Called when the user taps Text (before opening Messages) */
+  onTextClick?: () => void;
 };
 
 export default function PhoneContactLinks({
@@ -21,6 +23,7 @@ export default function PhoneContactLinks({
   showEmpty = true,
   className = "",
   compact = false,
+  onTextClick,
 }: Props) {
   const raw = pickPhoneNumber({ mobileNumber, homeNumber });
   const digits = digitsForTel(raw);
@@ -50,6 +53,7 @@ export default function PhoneContactLinks({
           className={`${btn} size-8 text-sm`}
           title="Text"
           aria-label={`Text ${display}`}
+          onClick={() => onTextClick?.()}
         >
           💬
         </a>
@@ -77,6 +81,7 @@ export default function PhoneContactLinks({
           href={`sms:${digits}`}
           className={`${btn} px-2 py-0.5 text-xs`}
           aria-label={`Text ${display}`}
+          onClick={() => onTextClick?.()}
         >
           Text
         </a>
