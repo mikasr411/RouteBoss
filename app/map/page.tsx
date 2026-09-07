@@ -4,6 +4,11 @@ import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useCustomerStore } from "@/store/customer-store";
 import { Customer } from "@/types/customer";
 import { formatDate, isCustomerDue } from "@/lib/utils";
+import {
+  isCustomerDoneOnDate,
+  patchMarkCustomerDone,
+  patchUndoCustomerDone,
+} from "@/lib/customer-lead-status";
 import { geocodeAddress, hasCoordinates } from "@/lib/geocoding";
 import MapLoader from "@/components/map/MapLoader";
 import WeekRoutePlanner from "@/components/WeekRoutePlanner";
@@ -585,6 +590,24 @@ export default function MapPage() {
       });
     },
     [customers, updateCustomer]
+  );
+
+  const toggleLeadContacted = useCallback(
+    (customerId: string, contacted: boolean) => {
+      updateCustomer(customerId, { leadContacted: contacted });
+    },
+    [updateCustomer]
+  );
+
+  const toggleServicedDone = useCallback(
+    (customer: Customer, done: boolean) => {
+      if (done) {
+        updateCustomer(customer.id, patchMarkCustomerDone(customer, workingDay));
+      } else if (customer.markedDoneOn === workingDay) {
+        updateCustomer(customer.id, patchUndoCustomerDone(customer));
+      }
+    },
+    [updateCustomer, workingDay]
   );
 
   const getAutocompleteService = useCallback(() => {
@@ -2121,6 +2144,43 @@ export default function MapPage() {
                                 ? "Remove from Route"
                                 : "Add to Route"}
                             </button>
+                            <div className="flex flex-col gap-2 mb-3 border-t border-slate-200 pt-2">
+                              {!customer.lastServiceDate && (
+                                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!customer.leadContacted}
+                                    onChange={(e) =>
+                                      toggleLeadContacted(
+                                        customer.id,
+                                        e.target.checked
+                                      )
+                                    }
+                                  />
+                                  <span className="text-orange-700 font-medium">
+                                    Contacted
+                                  </span>
+                                </label>
+                              )}
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={isCustomerDoneOnDate(
+                                    customer,
+                                    workingDay
+                                  )}
+                                  onChange={(e) =>
+                                    toggleServicedDone(
+                                      customer,
+                                      e.target.checked
+                                    )
+                                  }
+                                />
+                                <span className="text-blue-800 font-medium">
+                                  Done ({formatDate(workingDay)})
+                                </span>
+                              </label>
+                            </div>
                             <div className="text-sm mb-1">
                               {customer.city}, {customer.state}
                             </div>

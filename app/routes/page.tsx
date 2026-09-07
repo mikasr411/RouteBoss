@@ -2,7 +2,12 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useCustomerStore } from "@/store/customer-store";
-import { formatDate, calculateNextServiceDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
+import {
+  isCustomerDoneOnDate,
+  patchMarkCustomerDone,
+  patchUndoCustomerDone,
+} from "@/lib/customer-lead-status";
 import { format } from "date-fns";
 import {
   DEFAULT_TEMPLATE,
@@ -283,39 +288,13 @@ export default function RoutesPage() {
   };
 
   const isDoneOnRouteDate = (customer: Customer) =>
-    customer.markedDoneOn === routeDate;
+    isCustomerDoneOnDate(customer, routeDate);
 
   const toggleServicedDone = (customer: Customer, done: boolean) => {
     if (done) {
-      const patch: Partial<Customer> = {
-        markedDoneOn: routeDate,
-        lastServiceDate: routeDate,
-        nextServiceDate: calculateNextServiceDate(
-          routeDate,
-          customer.serviceFrequency
-        ),
-        leadContacted: true,
-      };
-      if (
-        customer.lastServiceDate &&
-        customer.lastServiceDate !== routeDate
-      ) {
-        patch.priorLastServiceDate = customer.lastServiceDate;
-      }
-      updateCustomer(customer.id, patch);
+      updateCustomer(customer.id, patchMarkCustomerDone(customer, routeDate));
     } else if (customer.markedDoneOn === routeDate) {
-      const restoreDate = customer.priorLastServiceDate;
-      updateCustomer(customer.id, {
-        markedDoneOn: undefined,
-        priorLastServiceDate: undefined,
-        lastServiceDate: restoreDate,
-        nextServiceDate: restoreDate
-          ? calculateNextServiceDate(
-              restoreDate,
-              customer.serviceFrequency
-            )
-          : undefined,
-      });
+      updateCustomer(customer.id, patchUndoCustomerDone(customer));
     }
   };
 
