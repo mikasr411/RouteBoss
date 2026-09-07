@@ -30,5 +30,9 @@ export type Customer = {
   leadSpecial?: string;
   /** Where this contact was imported from */
   leadSource?: LeadSource;
+  /** Panel count from lead form (free text, e.g. "27" or "11-20") */
+  panelCount?: string;
+  /** Home story type from lead form, e.g. "single" or "2_story" */
+  storyType?: string;
 };
 

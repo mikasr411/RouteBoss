@@ -248,6 +248,8 @@ export function facebookRowToCustomer(row: FacebookLeadRow): Customer {
     isSelectedForRoute: false,
     leadSource: "facebook",
     leadSpecial: row.ad_name?.replace(/^"|"$/g, "").trim() || undefined,
+    panelCount: row["how_many_panels_if_you_know?"]?.trim() || undefined,
+    storyType: row["single_story_or_two-story?"]?.trim() || undefined,
   };
 
   return customer;

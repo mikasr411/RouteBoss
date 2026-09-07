@@ -1,6 +1,14 @@
 import { Customer } from "@/types/customer";
 import { format, parse, differenceInCalendarDays } from "date-fns";
 
+/** Standard quote amounts for messaging */
+export const ONE_STORY_PRICE = 90;
+export const TWO_STORY_PRICE = 140;
+
+export function formatQuotePrice(dollars: number): string {
+  return `$${dollars}`;
+}
+
 export type TemplateVariables = {
   displayName: string;
   firstName: string;
@@ -11,6 +19,9 @@ export type TemplateVariables = {
   lastServiceDate: string;
   nextServiceDate: string;
   daysSinceLastService: string;
+  panelCount: string;
+  oneStoryPrice: string;
+  twoStoryPrice: string;
 };
 
 /**
@@ -57,6 +68,9 @@ export function buildTemplateVariables(customer: Customer): TemplateVariables {
     lastServiceDate: lastServiceDateFormatted,
     nextServiceDate: nextServiceDateFormatted,
     daysSinceLastService,
+    panelCount: customer.panelCount?.trim() || "",
+    oneStoryPrice: formatQuotePrice(ONE_STORY_PRICE),
+    twoStoryPrice: formatQuotePrice(TWO_STORY_PRICE),
   };
 }
 

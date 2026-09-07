@@ -77,6 +77,8 @@ export function mergeImportedCustomer(
     notes: appendNotes(existing.notes, incoming.notes),
     leadSpecial: incoming.leadSpecial || existing.leadSpecial,
     leadSource: incoming.leadSource || existing.leadSource,
+    panelCount: incoming.panelCount || existing.panelCount,
+    storyType: incoming.storyType || existing.storyType,
   };
 }
 

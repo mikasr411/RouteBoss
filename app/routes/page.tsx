@@ -828,6 +828,18 @@ export default function RoutesPage() {
               <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
                 {"{daysSinceLastService}"}
               </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{panelCount}"}
+              </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{oneStoryPrice}"}
+              </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{twoStoryPrice}"}
+              </code>
               . One message will be generated per selected stop.
             </p>
             <textarea
@@ -873,6 +885,18 @@ export default function RoutesPage() {
               ,{" "}
               <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
                 {"{daysSinceLastService}"}
+              </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{panelCount}"}
+              </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{oneStoryPrice}"}
+              </code>
+              ,{" "}
+              <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-200">
+                {"{twoStoryPrice}"}
               </code>
             </div>
           </div>
