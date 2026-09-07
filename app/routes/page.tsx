@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useCustomerStore } from "@/store/customer-store";
-import { formatDate } from "@/lib/utils";
+import { formatDate, calculateNextServiceDate } from "@/lib/utils";
 import { format } from "date-fns";
 import {
   DEFAULT_TEMPLATE,
@@ -276,6 +276,47 @@ export default function RoutesPage() {
   /** Same flag as Map checkboxes — Map and Routes stay in sync via the store. */
   const removeCustomerFromRoute = (customerId: string) => {
     updateCustomer(customerId, { isSelectedForRoute: false });
+  };
+
+  const toggleLeadContacted = (customerId: string, contacted: boolean) => {
+    updateCustomer(customerId, { leadContacted: contacted });
+  };
+
+  const isDoneOnRouteDate = (customer: Customer) =>
+    customer.markedDoneOn === routeDate;
+
+  const toggleServicedDone = (customer: Customer, done: boolean) => {
+    if (done) {
+      const patch: Partial<Customer> = {
+        markedDoneOn: routeDate,
+        lastServiceDate: routeDate,
+        nextServiceDate: calculateNextServiceDate(
+          routeDate,
+          customer.serviceFrequency
+        ),
+        leadContacted: true,
+      };
+      if (
+        customer.lastServiceDate &&
+        customer.lastServiceDate !== routeDate
+      ) {
+        patch.priorLastServiceDate = customer.lastServiceDate;
+      }
+      updateCustomer(customer.id, patch);
+    } else if (customer.markedDoneOn === routeDate) {
+      const restoreDate = customer.priorLastServiceDate;
+      updateCustomer(customer.id, {
+        markedDoneOn: undefined,
+        priorLastServiceDate: undefined,
+        lastServiceDate: restoreDate,
+        nextServiceDate: restoreDate
+          ? calculateNextServiceDate(
+              restoreDate,
+              customer.serviceFrequency
+            )
+          : undefined,
+      });
+    }
   };
 
   const handleSaveRouteToHistory = () => {
@@ -1014,7 +1055,14 @@ export default function RoutesPage() {
                 {generatedMessages.map((item) => (
                   <div
                     key={item.customer.id}
-                    className="bg-slate-700 rounded p-4 border border-slate-600"
+                    className={`bg-slate-700 rounded p-4 border ${
+                      isDoneOnRouteDate(item.customer)
+                        ? "border-blue-500/50 ring-1 ring-blue-500/25"
+                        : item.customer.leadContacted &&
+                            !item.customer.lastServiceDate
+                          ? "border-purple-500/60 ring-1 ring-purple-500/30"
+                          : "border-slate-600"
+                    }`}
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-2">
                       <div className="min-w-0 space-y-1">
@@ -1036,6 +1084,52 @@ export default function RoutesPage() {
                         />
                       </div>
                       <div className="flex flex-col sm:items-end gap-2 shrink-0 self-stretch sm:self-start">
+                        {!item.customer.lastServiceDate && (
+                          <label className="flex items-center gap-2 cursor-pointer rounded border border-slate-600 bg-slate-800/80 px-3 py-1.5 text-sm w-full sm:w-auto justify-center sm:justify-start">
+                            <input
+                              type="checkbox"
+                              checked={!!item.customer.leadContacted}
+                              onChange={(e) =>
+                                toggleLeadContacted(
+                                  item.customer.id,
+                                  e.target.checked
+                                )
+                              }
+                              className="rounded border-slate-500 text-purple-500 focus:ring-purple-500"
+                            />
+                            <span
+                              className={
+                                item.customer.leadContacted
+                                  ? "text-purple-200 font-medium"
+                                  : "text-slate-300"
+                              }
+                            >
+                              Contacted
+                            </span>
+                          </label>
+                        )}
+                        <label className="flex items-center gap-2 cursor-pointer rounded border border-slate-600 bg-slate-800/80 px-3 py-1.5 text-sm w-full sm:w-auto justify-center sm:justify-start">
+                          <input
+                            type="checkbox"
+                            checked={isDoneOnRouteDate(item.customer)}
+                            onChange={(e) =>
+                              toggleServicedDone(item.customer, e.target.checked)
+                            }
+                            className="rounded border-slate-500 text-blue-500 focus:ring-blue-500"
+                          />
+                          <span
+                            className={
+                              isDoneOnRouteDate(item.customer)
+                                ? "text-blue-200 font-medium"
+                                : "text-slate-300"
+                            }
+                          >
+                            Done{" "}
+                            <span className="text-slate-500 text-xs">
+                              ({formatDate(routeDate)})
+                            </span>
+                          </span>
+                        </label>
                         <button
                           type="button"
                           onClick={() =>

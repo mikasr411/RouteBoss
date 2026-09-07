@@ -47,7 +47,9 @@ const defaultZoom = 10;
 const getMarkerColor = (customer: Customer): string => {
   // Emerald: on route (letter A/B/C…)
   if (customer.isSelectedForRoute) return "#10b981";
-  // Green: never serviced / new lead (no last service date)
+  // Purple: new lead already contacted
+  if (!customer.lastServiceDate && customer.leadContacted) return "#a855f7";
+  // Green: never serviced / new lead (not contacted yet)
   if (!customer.lastServiceDate) return "#22c55e";
   // Red: due for service
   if (isCustomerDue(customer)) return "#ef4444";

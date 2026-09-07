@@ -79,6 +79,10 @@ export function mergeImportedCustomer(
     leadSource: incoming.leadSource || existing.leadSource,
     panelCount: incoming.panelCount || existing.panelCount,
     storyType: incoming.storyType || existing.storyType,
+    leadContacted: existing.leadContacted ?? incoming.leadContacted,
+    markedDoneOn: existing.markedDoneOn ?? incoming.markedDoneOn,
+    priorLastServiceDate:
+      existing.priorLastServiceDate ?? incoming.priorLastServiceDate,
   };
 }
 

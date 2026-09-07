@@ -34,5 +34,11 @@ export type Customer = {
   panelCount?: string;
   /** Home story type from lead form, e.g. "single" or "2_story" */
   storyType?: string;
+  /** Lead was messaged / contacted — map pin turns purple instead of green */
+  leadContacted?: boolean;
+  /** Route date (yyyy-MM-dd) when marked Done on Routes */
+  markedDoneOn?: string;
+  /** Previous last service before Done overwrote it (for undo) */
+  priorLastServiceDate?: string;
 };
 
