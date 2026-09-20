@@ -8,6 +8,31 @@ export function digitsForTel(raw: string | undefined | null): string | null {
 }
 
 /**
+ * US-style match key so +14085551212 and (408) 555-1212 hit the same person.
+ */
+export function normalizePhoneMatchKey(
+  raw: string | undefined | null
+): string | null {
+  const d = digitsForTel(raw);
+  if (!d) return null;
+  if (d.length === 11 && d.startsWith("1")) return d.slice(1);
+  if (d.length > 10) return d.slice(-10);
+  return d;
+}
+
+export function phoneMatchKeysForCustomer(c: {
+  mobileNumber?: string;
+  homeNumber?: string;
+}): string[] {
+  const keys = new Set<string>();
+  const mobile = normalizePhoneMatchKey(c.mobileNumber);
+  const home = normalizePhoneMatchKey(c.homeNumber);
+  if (mobile) keys.add(mobile);
+  if (home) keys.add(home);
+  return Array.from(keys);
+}
+
+/**
  * Prefer mobile, then home landline.
  */
 export function pickPhoneNumber(c: {

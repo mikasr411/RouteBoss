@@ -46,7 +46,7 @@ export default function ImportPage() {
     setPreviewCustomers([]);
     setImportSource(null);
     alert(
-      `Merged ${n} customer${n !== 1 ? "s" : ""} by ID (Facebook leads also match existing contacts by phone). Existing contacts not in this file were kept; map coordinates, route selections, notes, and service history were preserved where applicable.`
+      `Merged ${n} customer${n !== 1 ? "s" : ""} by ID, phone, and address. Housecall service dates update matching specials and auto-mark Done if serviced in the last 30 days.`
     );
   };
 
@@ -83,12 +83,13 @@ export default function ImportPage() {
           (tab-separated).
         </p>
         <p className="text-slate-500 text-sm mb-6">
-          <strong className="text-slate-300">Merge by ID</strong> (recommended)
-          updates matching contacts and adds new ones, keeps everyone who is not
-          in this file, and preserves map coordinates, who is on the current route,
-          notes, and your service frequency. Facebook leads use their lead{" "}
-          <code className="text-slate-400">id</code> on re-import; if the phone
-          matches an existing Housecall Pro customer, they merge into that contact.{" "}
+          <strong className="text-slate-300">Merge</strong> (recommended) matches
+          by Housecall / Facebook ID, then phone (with or without +1), then
+          street + zip. Housecall updates the same specials person so a recent{" "}
+          <em>Last service date</em> marks them Done for about 30 days — no
+          manual checkbox. Duplicate Facebook + Housecall cards for one phone
+          are combined. Everyone not in this file is kept, along with map pins,
+          route selections, notes, and frequency.{" "}
           <strong className="text-slate-300">Replace all</strong> wipes the list
           and loads only this file.
         </p>
@@ -124,8 +125,10 @@ export default function ImportPage() {
                 {importSource ? ` (${importSource})` : ""}
               </p>
               <p className="text-slate-500 text-sm mt-1">
-                New leads (no service date) show as green pins on the map after
-                geocoding. Use the Special filter to find campaign leads.
+                New leads (no service date) show as green pins after geocoding.
+                After a Housecall merge, recently serviced specials turn blue
+                and show as Done for about a month. Use the Special filter to
+                find campaign leads.
               </p>
             </div>
 
