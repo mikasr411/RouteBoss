@@ -5,6 +5,14 @@ import { useCustomerStore } from "@/store/customer-store";
 import { Customer } from "@/types/customer";
 import { formatDate, isCustomerDue } from "@/lib/utils";
 import {
+  getMarkerColor,
+  LAST_SERVICE_MONTH_COLORS,
+  MARKER_CONTACTED,
+  MARKER_LEAD,
+  MARKER_ON_ROUTE,
+  MARKER_OVERDUE,
+} from "@/lib/marker-colors";
+import {
   isCustomerDoneOnDate,
   patchMarkCustomerDone,
   patchUndoCustomerDone,
@@ -47,20 +55,6 @@ const defaultCenter = {
 };
 
 const defaultZoom = 10;
-
-// Marker colors based on status
-const getMarkerColor = (customer: Customer): string => {
-  // Orange: new lead already contacted (wins over on-route emerald so Routes toggles show on map)
-  if (!customer.lastServiceDate && customer.leadContacted) return "#f97316";
-  // Emerald: on route (letter A/B/C…)
-  if (customer.isSelectedForRoute) return "#10b981";
-  // Green: never serviced / new lead (not contacted yet)
-  if (!customer.lastServiceDate) return "#22c55e";
-  // Red: due for service
-  if (isCustomerDue(customer)) return "#ef4444";
-  // Blue: regular customers
-  return "#3b82f6";
-};
 
 // Create custom marker icon (must be called when google.maps is available)
 // Fixed size - doesn't scale with zoom
@@ -1905,6 +1899,62 @@ export default function MapPage() {
                 </div>
               )}
 
+              <div>
+                <label className="block text-xs text-slate-300 mb-1.5">
+                  Pin colors
+                </label>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400 mb-2">
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      className="size-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: MARKER_LEAD }}
+                    />
+                    Lead
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      className="size-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: MARKER_CONTACTED }}
+                    />
+                    Contacted
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      className="size-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: MARKER_ON_ROUTE }}
+                    />
+                    On route
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      className="size-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: MARKER_OVERDUE }}
+                    />
+                    7+ mo
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mb-1">
+                  Last service (warm → ice at 6 mo)
+                </p>
+                <div className="flex items-center gap-0.5">
+                  {LAST_SERVICE_MONTH_COLORS.map((color, months) => (
+                    <span
+                      key={months}
+                      className="flex flex-col items-center gap-0.5 min-w-0 flex-1"
+                      title={`${months} month${months === 1 ? "" : "s"} ago${months === 6 ? " (ice)" : ""}`}
+                    >
+                      <span
+                        className="h-3 w-full rounded-sm"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span className="text-[9px] text-slate-500 leading-none">
+                        {months}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
               {routeOnlyView && routeStopOrder.length > 0 && (
                 <button
                   type="button"
@@ -1934,6 +1984,16 @@ export default function MapPage() {
                         onClick={() => panToCustomer(customer)}
                       >
                         <div className="flex items-start gap-2">
+                          <span
+                            className="mt-1.5 size-2.5 rounded-full shrink-0 ring-1 ring-white/20"
+                            style={{
+                              backgroundColor: getMarkerColor(
+                                customer,
+                                workingDay
+                              ),
+                            }}
+                            title="Pin color"
+                          />
                           <input
                             type="checkbox"
                             checked={customer.isSelectedForRoute || false}
@@ -2095,7 +2155,7 @@ export default function MapPage() {
             >
               {/* Markers */}
               {customersOnMap.map((customer) => {
-                const color = getMarkerColor(customer);
+                const color = getMarkerColor(customer, workingDay);
                 const letter = routeStopLetterByKey.get(`customer:${customer.id}`);
                 const icon = markerIconForColorAndLabel(color, letter);
                 const pos = {
@@ -2178,6 +2238,16 @@ export default function MapPage() {
                                 />
                                 <span className="text-blue-800 font-medium">
                                   Done ({formatDate(workingDay)})
+                                  {isCustomerDoneOnDate(customer, workingDay) &&
+                                  customer.markedDoneOn !== workingDay &&
+                                  customer.lastServiceDate ? (
+                                    <span className="text-slate-500 font-normal">
+                                      {" "}
+                                      · Housecall {formatDate(
+                                        customer.lastServiceDate
+                                      )}
+                                    </span>
+                                  ) : null}
                                 </span>
                               </label>
                             </div>
