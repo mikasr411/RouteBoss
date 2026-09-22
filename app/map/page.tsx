@@ -7,10 +7,12 @@ import { formatDate, isCustomerDue } from "@/lib/utils";
 import {
   getMarkerColor,
   LAST_SERVICE_MONTH_COLORS,
+  lastServiceMonthBucket,
   MARKER_CONTACTED,
   MARKER_LEAD,
   MARKER_ON_ROUTE,
   MARKER_OVERDUE,
+  type LastServiceMonthBucket,
 } from "@/lib/marker-colors";
 import {
   isCustomerDoneOnDate,
@@ -156,6 +158,9 @@ export default function MapPage() {
   const [selectedFrequency, setSelectedFrequency] = useState<string>("all");
   const [selectedSpecial, setSelectedSpecial] = useState<string>("all");
   const [dueOnly, setDueOnly] = useState(false);
+  const [lastServiceMonths, setLastServiceMonths] = useState<
+    LastServiceMonthBucket[]
+  >([]);
   const [routeOnlyView, setRouteOnlyView] = useState(false);
   const [weekPlannerOpen, setWeekPlannerOpen] = useState(false);
   /** Phone layout: sidebar tools live in a dropdown overlay so the map fills the screen */
@@ -285,6 +290,14 @@ export default function MapPage() {
       filtered = filtered.filter(isCustomerDue);
     }
 
+    if (lastServiceMonths.length > 0) {
+      filtered = filtered.filter((c) =>
+        lastServiceMonths.includes(
+          lastServiceMonthBucket(c.lastServiceDate, workingDay)
+        )
+      );
+    }
+
     return filtered;
   }, [
     customers,
@@ -293,6 +306,8 @@ export default function MapPage() {
     selectedFrequency,
     selectedSpecial,
     dueOnly,
+    lastServiceMonths,
+    workingDay,
   ]);
 
   // Customers with coordinates
@@ -585,6 +600,24 @@ export default function MapPage() {
     },
     [customers, updateCustomer]
   );
+
+  const toggleLastServiceMonth = useCallback((value: LastServiceMonthBucket) => {
+    setLastServiceMonths((prev) =>
+      prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
+    );
+  }, []);
+
+  const addListedToRoute = useCallback(() => {
+    const ids = new Set(customersWithCoords.map((c) => c.id));
+    if (ids.size === 0) return;
+    useCustomerStore.setState((state) => ({
+      customers: state.customers.map((c) =>
+        ids.has(c.id) && !c.isSelectedForRoute
+          ? { ...c, isSelectedForRoute: true }
+          : c
+      ),
+    }));
+  }, [customersWithCoords]);
 
   const toggleLeadContacted = useCallback(
     (customerId: string, contacted: boolean) => {
@@ -1878,6 +1911,25 @@ export default function MapPage() {
                 </select>
               </div>
 
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="block text-xs text-slate-300">
+                    Last service
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setLastServiceMonths([])}
+                    disabled={lastServiceMonths.length === 0}
+                    className="text-[11px] text-slate-400 hover:text-slate-200 disabled:opacity-40 disabled:cursor-default"
+                  >
+                    {lastServiceMonths.length === 0 ? "All on" : "Clear / all on"}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 mb-1.5">
+                  Tap months on or off. Empty = show everyone.
+                </p>
+              </div>
+
               {leadSpecials.length > 0 && (
                 <div>
                   <label className="block text-xs text-slate-300 mb-1">
@@ -1904,13 +1956,23 @@ export default function MapPage() {
                   Pin colors
                 </label>
                 <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400 mb-2">
-                  <span className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    className={`inline-flex items-center gap-1 ${
+                      lastServiceMonths.includes("lead") ? "text-slate-100" : ""
+                    }`}
+                    onClick={() => toggleLastServiceMonth("lead")}
+                  >
                     <span
-                      className="size-2.5 rounded-full shrink-0"
+                      className={`size-2.5 rounded-full shrink-0 ${
+                        lastServiceMonths.includes("lead")
+                          ? "ring-2 ring-white/80"
+                          : ""
+                      }`}
                       style={{ backgroundColor: MARKER_LEAD }}
                     />
                     Lead
-                  </span>
+                  </button>
                   <span className="inline-flex items-center gap-1">
                     <span
                       className="size-2.5 rounded-full shrink-0"
@@ -1925,34 +1987,64 @@ export default function MapPage() {
                     />
                     On route
                   </span>
-                  <span className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    className={`inline-flex items-center gap-1 ${
+                      lastServiceMonths.includes("7+") ? "text-slate-100" : ""
+                    }`}
+                    onClick={() => toggleLastServiceMonth("7+")}
+                  >
                     <span
-                      className="size-2.5 rounded-full shrink-0"
+                      className={`size-2.5 rounded-full shrink-0 ${
+                        lastServiceMonths.includes("7+")
+                          ? "ring-2 ring-white/80"
+                          : ""
+                      }`}
                       style={{ backgroundColor: MARKER_OVERDUE }}
                     />
                     7+ mo
-                  </span>
+                  </button>
                 </div>
                 <p className="text-[11px] text-slate-500 mb-1">
-                  Last service (warm → ice at 6 mo)
+                  Last service — tap to toggle months
                 </p>
                 <div className="flex items-center gap-0.5">
-                  {LAST_SERVICE_MONTH_COLORS.map((color, months) => (
-                    <span
-                      key={months}
-                      className="flex flex-col items-center gap-0.5 min-w-0 flex-1"
-                      title={`${months} month${months === 1 ? "" : "s"} ago${months === 6 ? " (ice)" : ""}`}
-                    >
-                      <span
-                        className="h-3 w-full rounded-sm"
-                        style={{ backgroundColor: color }}
-                      />
-                      <span className="text-[9px] text-slate-500 leading-none">
-                        {months}
-                      </span>
-                    </span>
-                  ))}
+                  {LAST_SERVICE_MONTH_COLORS.map((color, months) => {
+                    const value = String(months) as LastServiceMonthBucket;
+                    const active = lastServiceMonths.includes(value);
+                    return (
+                      <button
+                        type="button"
+                        key={months}
+                        className={`flex flex-col items-center gap-0.5 min-w-0 flex-1 rounded-sm ${
+                          active
+                            ? "ring-2 ring-white/80"
+                            : lastServiceMonths.length > 0
+                              ? "opacity-40 hover:opacity-70"
+                              : "opacity-80 hover:opacity-100"
+                        }`}
+                        title={`${months} month${months === 1 ? "" : "s"} ago${months === 6 ? " (ice)" : ""}`}
+                        onClick={() => toggleLastServiceMonth(value)}
+                      >
+                        <span
+                          className="h-3 w-full rounded-sm"
+                          style={{ backgroundColor: color }}
+                        />
+                        <span className="text-[9px] text-slate-500 leading-none">
+                          {months}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
+                <button
+                  type="button"
+                  disabled={customersWithCoords.length === 0}
+                  onClick={addListedToRoute}
+                  className="mt-2 w-full bg-emerald-700 hover:bg-emerald-600 disabled:bg-slate-600 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded text-xs font-medium transition-colors"
+                >
+                  Add listed to route ({customersWithCoords.length})
+                </button>
               </div>
 
               {routeOnlyView && routeStopOrder.length > 0 && (
@@ -1975,6 +2067,10 @@ export default function MapPage() {
               ) : (
                 <div className="divide-y divide-slate-700">
                   {customersWithCoords.map((customer) => {
+                    const monthBucket = lastServiceMonthBucket(
+                      customer.lastServiceDate,
+                      workingDay
+                    );
                     return (
                       <div
                         key={customer.id}
@@ -2012,7 +2108,10 @@ export default function MapPage() {
                               {customer.city}, {customer.state}
                             </div>
                             <div className="text-xs text-slate-400">
-                              Next: {formatDate(customer.nextServiceDate)}
+                              Last: {formatDate(customer.lastServiceDate)}
+                              {customer.lastServiceDate
+                                ? ` · ${monthBucket === "lead" ? "0" : monthBucket} mo`
+                                : ""}
                             </div>
                             <div className="text-xs text-slate-400">
                               {customer.serviceFrequency}

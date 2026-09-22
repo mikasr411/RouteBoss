@@ -36,6 +36,27 @@ export function monthsSinceLastService(
   }
 }
 
+export type LastServiceMonthBucket =
+  | "lead"
+  | "0"
+  | "1"
+  | "2"
+  | "3"
+  | "4"
+  | "5"
+  | "6"
+  | "7+";
+
+export function lastServiceMonthBucket(
+  lastServiceDate: string | undefined,
+  asOfDate: string
+): LastServiceMonthBucket {
+  const months = monthsSinceLastService(lastServiceDate, asOfDate);
+  if (months == null) return "lead";
+  if (months >= 7) return "7+";
+  return String(months) as LastServiceMonthBucket;
+}
+
 export function lastServiceMonthColor(
   lastServiceDate: string | undefined,
   asOfDate: string
