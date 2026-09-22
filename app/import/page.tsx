@@ -91,7 +91,11 @@ export default function ImportPage() {
           are combined. Everyone not in this file is kept, along with map pins,
           route selections, notes, and frequency.{" "}
           <strong className="text-slate-300">Replace all</strong> wipes the list
-          and loads only this file.
+          and loads only this file. To merge leftover lookalikes by hand, use{" "}
+          <a href="/customers/duplicates" className="text-blue-300 underline">
+            Review duplicates
+          </a>{" "}
+          on Customers.
         </p>
 
         <div className="mb-6">

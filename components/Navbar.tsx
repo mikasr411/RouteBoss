@@ -32,7 +32,7 @@ export default function Navbar() {
             <Link
               href="/customers"
               className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded text-sm transition-colors ${
-                isActive("/customers")
+                pathname?.startsWith("/customers")
                   ? "bg-slate-700 text-slate-100"
                   : "text-slate-300 hover:text-slate-100 hover:bg-slate-700/50"
               }`}

@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { SavedRoute } from "@/types/saved-route";
 import type { ManualRouteStop } from "@/types/manual-stop";
 import type { RouteStartPoint, RouteStopKey } from "@/types/route-plan";
+import { remapCustomerIdList } from "@/lib/customer-duplicates";
 
 const STORAGE_KEY = "routeboss:routeHistory";
 const MAX_SAVED_ROUTES = 80;
@@ -39,6 +40,8 @@ type RouteHistoryState = {
       routeStart?: RouteStartPoint | null;
     }
   ) => void;
+  /** Point absorbed customer ids at the kept id after a duplicate merge. */
+  remapCustomerIds: (absorbIds: string[], keepId: string) => void;
 };
 
 function cloneStops(stops: ManualRouteStop[]): ManualRouteStop[] {
@@ -120,6 +123,38 @@ export const useRouteHistoryStore = create<RouteHistoryState>()(
             };
           }),
         })),
+      remapCustomerIds: (absorbIds, keepId) =>
+        set((state) => {
+          if (absorbIds.length === 0) return state;
+          const absorb = new Set(absorbIds);
+          return {
+            savedRoutes: state.savedRoutes.map((r) => {
+              const seen = new Set<string>();
+              const routeStopOrder = r.routeStopOrder
+                ? r.routeStopOrder.reduce<RouteStopKey[]>((acc, k) => {
+                    const next: RouteStopKey =
+                      k.kind === "customer" && absorb.has(k.id)
+                        ? { kind: "customer", id: keepId }
+                        : k;
+                    const sig = `${next.kind}:${next.id}`;
+                    if (seen.has(sig)) return acc;
+                    seen.add(sig);
+                    acc.push(next);
+                    return acc;
+                  }, [])
+                : r.routeStopOrder;
+              return {
+                ...r,
+                customerIds: remapCustomerIdList(
+                  r.customerIds,
+                  absorbIds,
+                  keepId
+                ),
+                routeStopOrder,
+              };
+            }),
+          };
+        }),
     }),
     { name: STORAGE_KEY }
   )

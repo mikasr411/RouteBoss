@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import { Customer } from "@/types/customer";
 import { ManualRouteStop } from "@/types/manual-stop";
 import type { RouteStartPoint, RouteStopKey } from "@/types/route-plan";
-import { applyCustomerImportMerge } from "@/lib/customer-import-merge";
+import { applyCustomerImportMerge, mergeImportedCustomer } from "@/lib/customer-import-merge";
 
 function customerHasCoords(c: Customer): boolean {
   return (
@@ -69,6 +69,10 @@ type CustomerStore = {
   /** Match by Housecall Pro `id`: update from CSV, keep coords / route / notes / frequency; keep customers not in file */
   mergeCustomersFromImport: (imported: Customer[]) => void;
   updateCustomer: (id: string, patch: Partial<Customer>) => void;
+  /** Merge absorb ids into keepId and drop the extras. */
+  mergeDuplicateCustomers: (keepId: string, absorbIds: string[]) => void;
+  dismissedDuplicateKeys: string[];
+  dismissDuplicateGroup: (key: string) => void;
   clearCustomers: () => void;
   addManualStop: (stop: ManualRouteStop) => void;
   removeManualStop: (id: string) => void;
@@ -92,6 +96,7 @@ export const useCustomerStore = create<CustomerStore>()(
   persist(
     (set) => ({
       customers: [],
+      dismissedDuplicateKeys: [],
       manualStops: [],
       routeStopOrder: [],
       routeStart: null,
@@ -106,6 +111,47 @@ export const useCustomerStore = create<CustomerStore>()(
             c.id === id ? { ...c, ...patch } : c
           ),
         })),
+      mergeDuplicateCustomers: (keepId, absorbIds) =>
+        set((state) => {
+          const absorb = absorbIds.filter((id) => id && id !== keepId);
+          if (absorb.length === 0) return state;
+          const byId = new Map(state.customers.map((c) => [c.id, { ...c }]));
+          const keep = byId.get(keepId);
+          if (!keep) return state;
+          let current = keep;
+          for (const id of absorb) {
+            const other = byId.get(id);
+            if (!other) continue;
+            current = mergeImportedCustomer(current, other, {
+              preferExistingProfile: current.leadSource === "housecallpro",
+            });
+            byId.delete(id);
+          }
+          byId.set(keepId, current);
+          const absorbSet = new Set(absorb);
+          const remapKey = (k: RouteStopKey): RouteStopKey =>
+            k.kind === "customer" && absorbSet.has(k.id)
+              ? { kind: "customer", id: keepId }
+              : k;
+          const seen = new Set<string>();
+          const routeStopOrder: RouteStopKey[] = [];
+          for (const k of state.routeStopOrder.map(remapKey)) {
+            const sig = `${k.kind}:${k.id}`;
+            if (seen.has(sig)) continue;
+            seen.add(sig);
+            routeStopOrder.push(k);
+          }
+          return {
+            customers: Array.from(byId.values()),
+            routeStopOrder,
+          };
+        }),
+      dismissDuplicateGroup: (key) =>
+        set((state) => {
+          const keys = state.dismissedDuplicateKeys ?? [];
+          if (keys.includes(key)) return state;
+          return { dismissedDuplicateKeys: [...keys, key] };
+        }),
       clearCustomers: () => set({ customers: [] }),
       addManualStop: (stop) =>
         set((state) => ({

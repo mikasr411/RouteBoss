@@ -10,6 +10,7 @@ import { applyMessageTemplatePreset } from "@/lib/message-template";
 import { listLeadSpecials } from "@/lib/csv-parser";
 import { parse, compareAsc } from "date-fns";
 import PhoneContactLinks from "@/components/PhoneContactLinks";
+import { findDuplicateGroups } from "@/lib/customer-duplicates";
 
 type SortOption = "city" | "lastService" | "nextService";
 
@@ -20,6 +21,7 @@ export default function CustomersPage() {
     updateCustomer,
     replaceRouteCustomerSelection,
     clearRouteCustomerSelection,
+    dismissedDuplicateKeys,
   } = useCustomerStore();
   const [bulkNotice, setBulkNotice] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -117,6 +119,12 @@ export default function CustomersPage() {
   ]);
 
   const selectedCount = customers.filter((c) => c.isSelectedForRoute).length;
+
+  const duplicateGroupCount = useMemo(
+    () =>
+      findDuplicateGroups(customers, dismissedDuplicateKeys ?? []).length,
+    [customers, dismissedDuplicateKeys]
+  );
 
   const dueByCity = useMemo(
     () => groupDueCustomersByCity(customers),
@@ -271,6 +279,22 @@ export default function CustomersPage() {
     <div className="max-w-6xl mx-auto px-3 sm:px-4 py-6 sm:py-8 w-full min-w-0 max-w-full">
       <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 sm:p-6 w-full min-w-0">
         <h1 className="text-3xl font-bold mb-6 text-slate-100">Customers</h1>
+
+        {duplicateGroupCount > 0 && (
+          <div className="mb-6 rounded-lg border border-amber-700/50 bg-amber-950/30 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-amber-100 text-sm">
+              {duplicateGroupCount} possible duplicate
+              {duplicateGroupCount !== 1 ? " groups" : " group"} — same phone,
+              address, or name + street.
+            </p>
+            <Link
+              href="/customers/duplicates"
+              className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded text-sm font-semibold text-center shrink-0"
+            >
+              Review duplicates
+            </Link>
+          </div>
+        )}
 
         {/* Summary */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">

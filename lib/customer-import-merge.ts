@@ -15,7 +15,11 @@ function appendNotes(existing?: string, incoming?: string): string | undefined {
   return `${a}\n${b}`;
 }
 
-function addressMatchKey(c: Customer): string | null {
+export function addressMatchKey(c: {
+  street1?: string;
+  postalCode?: string;
+  city?: string;
+}): string | null {
   const street = (c.street1 || "")
     .toLowerCase()
     .replace(/[.,#]/g, " ")
