@@ -15,16 +15,24 @@ function normalizeStoryKey(storyType?: string | null): string {
   return (storyType || "").toLowerCase().replace(/[_-]/g, " ");
 }
 
+/** Detect if normalized story type is single-story */
+function isSingleStory(normalized: string): boolean {
+  return normalized.includes("single") || normalized.includes("one") || /\b1\b/.test(normalized);
+}
+
+/** Detect if normalized story type is two-story */
+function isTwoStory(normalized: string): boolean {
+  return /\b2\b/.test(normalized) || normalized.includes("two");
+}
+
 /** Base fee in dollars from story type, or null if unknown */
 export function baseFeeDollarsForStoryType(
   storyType?: string | null
 ): number | null {
   const s = normalizeStoryKey(storyType);
   if (!s) return null;
-  if (/\b2\b/.test(s) || s.includes("two")) return TWO_STORY_PRICE;
-  if (s.includes("single") || s.includes("one") || s === "1") {
-    return ONE_STORY_PRICE;
-  }
+  if (isTwoStory(s)) return TWO_STORY_PRICE;
+  if (isSingleStory(s)) return ONE_STORY_PRICE;
   return null;
 }
 
@@ -40,10 +48,8 @@ export function parsePanelCountNumber(panelCount?: string | null): number | null
 export function storyLabelForType(storyType?: string | null): string {
   const s = normalizeStoryKey(storyType);
   if (!s) return "";
-  if (/\b2\b/.test(s) || s.includes("two")) return "two-story";
-  if (s.includes("single") || s.includes("one") || s === "1") {
-    return "single-story";
-  }
+  if (isTwoStory(s)) return "two-story";
+  if (isSingleStory(s)) return "single-story";
   return "";
 }
 
